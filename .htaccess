@@ -1,0 +1,12 @@
+RewriteEngine On
+
+# No tocar SSL
+RewriteRule ^\.well-known/ - [L]
+
+# Si existe archivo o carpeta real, servirlo
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Todo lo demás va a index.php
+RewriteRule ^ index.php [QSA,L]
