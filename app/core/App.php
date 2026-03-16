@@ -22,6 +22,7 @@ class App {
       '/admin/shifts' => ['AdminController', 'shifts'],
       '/admin/areas' => ['AdminController', 'areas'],
       '/admin/purchase-areas' => ['AdminController', 'purchaseAreas'],
+      '/admin/requirements' => ['AdminController', 'requirements'],
       '/admin/promotions' => ['AdminController', 'promotions'],
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/inventory' => ['AdminController', 'inventory'],
@@ -33,6 +34,7 @@ class App {
       '/worker' => ['WorkerController', 'dashboard'],
       '/worker/attendance' => ['WorkerController', 'myAttendance'],
       '/worker/inventory' => ['WorkerController', 'inventory'],
+      '/worker/requirements' => ['WorkerController', 'requirements'],
       '/worker/profile' => ['WorkerController', 'profile'],
     ];
 

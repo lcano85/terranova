@@ -13,6 +13,7 @@ $path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/') ?: '/';
     <a class="nav-link <?= $path === '/admin/shifts' ? 'active' : '' ?>" href="/admin/shifts">Turnos</a>
     <a class="nav-link <?= $path === '/admin/areas' ? 'active' : '' ?>" href="/admin/areas">Areas</a>
     <a class="nav-link <?= $path === '/admin/purchase-areas' ? 'active' : '' ?>" href="/admin/purchase-areas">Areas de compras</a>
+    <a class="nav-link <?= $path === '/admin/requirements' ? 'active' : '' ?>" href="/admin/requirements">Requerimientos</a>
     <a class="nav-link <?= $path === '/admin/inventory' ? 'active' : '' ?>" href="/admin/inventory">Inventario</a>
     <a class="nav-link <?= $path === '/admin/promotions' ? 'active' : '' ?>" href="/admin/promotions">Promociones</a>
     <a class="nav-link <?= $path === '/admin/attendance' ? 'active' : '' ?>" href="/admin/attendance">Asistencia</a>

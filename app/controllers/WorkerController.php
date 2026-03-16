@@ -6,6 +6,8 @@ require_once __DIR__ . '/../core/Csrf.php';
 require_once __DIR__ . '/../models/Attendance.php';
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
+require_once __DIR__ . '/../models/PurchaseArea.php';
+require_once __DIR__ . '/../models/Requirement.php';
 
 class WorkerController extends Controller {
   private function calculateShiftMinutes(array $user): int
@@ -202,6 +204,68 @@ class WorkerController extends Controller {
     $user = Auth::user();
     $rows = Attendance::byWorker((int)$user['id'], 120);
     $this->view('worker/my_attendance', compact('user','rows'));
+  }
+
+  public function requirements(): void {
+    Auth::requireRole('worker');
+
+    $base = Auth::user();
+    $user = User::findWithDetails((int)$base['id']) ?: $base;
+    $msg = null;
+    $purchaseAreas = PurchaseArea::active();
+    $defaultDate = Requirement::nextAllowedDate();
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+
+      try {
+        $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
+        $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+        $itemsRaw = $_POST['items'] ?? [];
+        $items = [];
+
+        foreach ((array)$itemsRaw as $item) {
+          $item = trim((string)$item);
+          if ($item !== '') {
+            $items[] = $item;
+          }
+        }
+
+        if ($purchaseAreaId <= 0) {
+          throw new RuntimeException('Debes seleccionar un area de compra');
+        }
+        if ($requiredDate === '' || !Requirement::isAllowedDate($requiredDate)) {
+          throw new RuntimeException('La fecha solo puede ser jueves o sabado');
+        }
+        if (empty($items)) {
+          throw new RuntimeException('Debes ingresar al menos un item');
+        }
+
+        Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items);
+        $msg = ['type' => 'success', 'text' => 'Requerimiento registrado'];
+        $defaultDate = $requiredDate;
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $week = Requirement::weekRangeForDate();
+    $rows = Requirement::forWorkerWeek((int)$user['id'], $week['from']);
+    $grouped = [];
+
+    foreach ($rows as $row) {
+      $key = $row['required_date'] . '|' . $row['purchase_area_name'];
+      if (!isset($grouped[$key])) {
+        $grouped[$key] = [
+          'required_date' => $row['required_date'],
+          'purchase_area_name' => $row['purchase_area_name'],
+          'items' => []
+        ];
+      }
+      $grouped[$key]['items'][] = $row;
+    }
+
+    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'defaultDate', 'msg', 'week', 'grouped'));
   }
 
   public function inventory(): void {

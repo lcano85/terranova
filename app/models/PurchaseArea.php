@@ -8,6 +8,11 @@ class PurchaseArea
     return Database::conn()->query("SELECT * FROM purchase_areas ORDER BY id DESC")->fetchAll();
   }
 
+  public static function active(): array
+  {
+    return Database::conn()->query("SELECT * FROM purchase_areas WHERE is_active=1 ORDER BY name ASC")->fetchAll();
+  }
+
   public static function find(int $id): ?array
   {
     $st = Database::conn()->prepare("SELECT * FROM purchase_areas WHERE id=? LIMIT 1");
