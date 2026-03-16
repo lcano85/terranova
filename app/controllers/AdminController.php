@@ -7,6 +7,8 @@ require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/Shift.php';
 require_once __DIR__ . '/../models/Attendance.php';
 require_once __DIR__ . '/../models/WorkArea.php';
+require_once __DIR__ . '/../models/PurchaseArea.php';
+require_once __DIR__ . '/../models/Requirement.php';
 require_once __DIR__ . '/../models/WorkerPayRate.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
@@ -179,6 +181,91 @@ class AdminController extends Controller
 
     $areas = WorkArea::all();
     $this->view('admin/areas', compact('areas', 'msg'));
+  }
+
+  public function purchaseAreas(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          PurchaseArea::create(trim((string)$_POST['name']), isset($_POST['is_active']) ? 1 : 0);
+          $msg = ['type' => 'success', 'text' => 'Area de compra creada'];
+        }
+        if ($action === 'update') {
+          PurchaseArea::update((int)$_POST['id'], trim((string)$_POST['name']));
+          $msg = ['type' => 'success', 'text' => 'Area de compra actualizada'];
+        }
+        if ($action === 'activate') {
+          PurchaseArea::setActive((int)$_POST['id'], 1);
+          $msg = ['type' => 'success', 'text' => 'Area de compra activada'];
+        }
+        if ($action === 'deactivate') {
+          PurchaseArea::setActive((int)$_POST['id'], 0);
+          $msg = ['type' => 'warning', 'text' => 'Area de compra desactivada'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $areas = PurchaseArea::all();
+    $this->view('admin/purchase_areas', compact('areas', 'msg'));
+  }
+
+  public function requirements(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'toggle_item') {
+          Requirement::setPurchased(
+            (int)($_POST['item_id'] ?? 0),
+            isset($_POST['is_purchased']) ? 1 : 0
+          );
+          $msg = ['type' => 'success', 'text' => 'Estado de compra actualizado'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $week = Requirement::weekRangeForDate();
+    $rows = Requirement::forAdminWeek($week['from']);
+    $grouped = [];
+
+    foreach ($rows as $row) {
+      $workerKey = (int)$row['user_id'];
+      if (!isset($grouped[$workerKey])) {
+        $grouped[$workerKey] = [
+          'worker_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+          'areas' => []
+        ];
+      }
+
+      $areaKey = $row['required_date'] . '|' . $row['purchase_area_name'];
+      if (!isset($grouped[$workerKey]['areas'][$areaKey])) {
+        $grouped[$workerKey]['areas'][$areaKey] = [
+          'required_date' => $row['required_date'],
+          'purchase_area_name' => $row['purchase_area_name'],
+          'items' => []
+        ];
+      }
+
+      $grouped[$workerKey]['areas'][$areaKey]['items'][] = $row;
+    }
+
+    $this->view('admin/requirements', compact('msg', 'week', 'grouped'));
   }
 
 

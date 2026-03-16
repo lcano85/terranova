@@ -3,6 +3,21 @@ require_once __DIR__ . '/../core/Database.php';
 
 class Attendance
 {
+  private static function isOvernightShift(?string $startTime, ?string $endTime): bool
+  {
+    return !empty($startTime) && !empty($endTime) && $endTime <= $startTime;
+  }
+
+  private static function resolveWorkDate(string $markedAt, bool $overnightShift, ?string $endTime): string
+  {
+    $dt = new DateTime($markedAt);
+    if ($overnightShift && !empty($endTime) && $dt->format('H:i:s') < $endTime) {
+      $dt->modify('-1 day');
+    }
+
+    return $dt->format('Y-m-d');
+  }
+
   public static function find(int $id): ?array
   {
     $st = Database::conn()->prepare("
@@ -68,7 +83,9 @@ class Attendance
       FROM attendance a
       JOIN users u ON u.id=a.user_id
     ";
-    if ($where) $sql .= " WHERE " . implode(" AND ", $where);
+    if ($where) {
+      $sql .= " WHERE " . implode(" AND ", $where);
+    }
     $sql .= " ORDER BY a.id DESC LIMIT 300";
 
     $st = Database::conn()->prepare($sql);
@@ -76,35 +93,81 @@ class Attendance
     return $st->fetchAll();
   }
 
+  public static function monthlySummary(
+    int $userId,
+    string $fromDate,
+    string $toDate,
+    ?string $shiftStartTime = null,
+    ?string $shiftEndTime = null
+  ): array {
+    $overnightShift = self::isOvernightShift($shiftStartTime, $shiftEndTime);
+    $queryTo = new DateTime($toDate . ' 23:59:59');
+    if ($overnightShift) {
+      $queryTo->modify('+1 day');
+    }
 
-  public static function monthlySummary(int $userId, string $fromDate, string $toDate): array
-  {
-    // Resumen por día: primera entrada y última salida + minutos de tardanza (solo en entradas)
     $st = Database::conn()->prepare("
       SELECT
-        DATE(marked_at) AS day,
-        MIN(CASE WHEN mark_type='in'  THEN marked_at END) AS first_in,
-        MAX(CASE WHEN mark_type='out' THEN marked_at END) AS last_out,
-        SUM(CASE WHEN mark_type='in' THEN minutes_late ELSE 0 END) AS minutes_late
+        id,
+        mark_type,
+        marked_at,
+        minutes_late
       FROM attendance
       WHERE user_id=?
-        AND DATE(marked_at) >= ?
-        AND DATE(marked_at) <= ?
-      GROUP BY DATE(marked_at)
-      ORDER BY day ASC
+        AND marked_at >= ?
+        AND marked_at <= ?
+      ORDER BY marked_at ASC, id ASC
     ");
-    $st->execute([$userId, $fromDate, $toDate]);
-    $days = $st->fetchAll();
+    $st->execute([
+      $userId,
+      $fromDate . ' 00:00:00',
+      $queryTo->format('Y-m-d H:i:s')
+    ]);
+    $rows = $st->fetchAll();
+
+    $daysMap = [];
+    foreach ($rows as $row) {
+      $workDate = self::resolveWorkDate($row['marked_at'], $overnightShift, $shiftEndTime);
+      if ($workDate < $fromDate || $workDate > $toDate) {
+        continue;
+      }
+
+      if (!isset($daysMap[$workDate])) {
+        $daysMap[$workDate] = [
+          'day' => $workDate,
+          'first_in' => null,
+          'last_out' => null,
+          'minutes_late' => 0
+        ];
+      }
+
+      if ($row['mark_type'] === 'in') {
+        if ($daysMap[$workDate]['first_in'] === null || $row['marked_at'] < $daysMap[$workDate]['first_in']) {
+          $daysMap[$workDate]['first_in'] = $row['marked_at'];
+        }
+        $daysMap[$workDate]['minutes_late'] += (int)($row['minutes_late'] ?? 0);
+      }
+
+      if ($row['mark_type'] === 'out') {
+        if ($daysMap[$workDate]['last_out'] === null || $row['marked_at'] > $daysMap[$workDate]['last_out']) {
+          $daysMap[$workDate]['last_out'] = $row['marked_at'];
+        }
+      }
+    }
+
+    ksort($daysMap);
+    $days = array_values($daysMap);
 
     $totalSeconds = 0;
     $workedDays = 0;
     $totalLate = 0;
+    $workedDates = [];
 
     foreach ($days as $d) {
-      // Día trabajado: si al menos marcó entrada (first_in)
       if (!empty($d['first_in'])) {
         $workedDays++;
         $totalLate += (int)($d['minutes_late'] ?? 0);
+        $workedDates[] = $d['day'];
 
         if (!empty($d['last_out'])) {
           $in  = new DateTime($d['first_in']);
@@ -119,6 +182,7 @@ class Attendance
     return [
       'days' => $days,
       'worked_days' => $workedDays,
+      'worked_dates' => $workedDates,
       'total_seconds' => $totalSeconds,
       'total_minutes_late' => $totalLate
     ];
