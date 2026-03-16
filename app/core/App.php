@@ -16,6 +16,7 @@ class App {
       '/logout' => ['AuthController', 'logout'],
 
       '/attendance/mark' => ['AttendanceController', 'mark'],
+      '/tasks/board' => ['TasksController', 'board'],
 
       '/admin' => ['AdminController', 'dashboard'],
       '/admin/workers' => ['AdminController', 'workers'],
@@ -24,6 +25,7 @@ class App {
       '/admin/purchase-areas' => ['AdminController', 'purchaseAreas'],
       '/admin/requirements' => ['AdminController', 'requirements'],
       '/admin/activities' => ['AdminController', 'activities'],
+      '/admin/tasks' => ['AdminController', 'tasks'],
       '/admin/promotions' => ['AdminController', 'promotions'],
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/inventory' => ['AdminController', 'inventory'],
@@ -37,6 +39,7 @@ class App {
       '/worker/inventory' => ['WorkerController', 'inventory'],
       '/worker/requirements' => ['WorkerController', 'requirements'],
       '/worker/activities' => ['WorkerController', 'activities'],
+      '/worker/tasks' => ['WorkerController', 'tasks'],
       '/worker/profile' => ['WorkerController', 'profile'],
     ];
 

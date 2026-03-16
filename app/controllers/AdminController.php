@@ -10,6 +10,7 @@ require_once __DIR__ . '/../models/WorkArea.php';
 require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/Requirement.php';
 require_once __DIR__ . '/../models/Activity.php';
+require_once __DIR__ . '/../models/Task.php';
 require_once __DIR__ . '/../models/WorkerPayRate.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
@@ -326,6 +327,73 @@ class AdminController extends Controller
     }
 
     $this->view('admin/activities', compact('msg', 'workers', 'assignments', 'week', 'board'));
+  }
+
+  public function tasks(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create_task') {
+          Task::createTask(trim((string)($_POST['name'] ?? '')), isset($_POST['is_active']) ? 1 : 0);
+          $msg = ['type' => 'success', 'text' => 'Tarea creada'];
+        }
+
+        if ($action === 'update_task') {
+          Task::updateTask(
+            (int)($_POST['id'] ?? 0),
+            trim((string)($_POST['name'] ?? '')),
+            isset($_POST['is_active']) ? 1 : 0
+          );
+          $msg = ['type' => 'success', 'text' => 'Tarea actualizada'];
+        }
+
+        if ($action === 'delete_task') {
+          Task::deleteTask((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Tarea eliminada'];
+        }
+
+        if ($action === 'create_assignment') {
+          Task::createAssignment(
+            (int)($_POST['user_id'] ?? 0),
+            (int)($_POST['task_id'] ?? 0),
+            (int)($_POST['weekday'] ?? 0),
+            isset($_POST['is_active']) ? 1 : 0
+          );
+          $msg = ['type' => 'success', 'text' => 'Asignacion creada'];
+        }
+
+        if ($action === 'update_assignment') {
+          Task::updateAssignment(
+            (int)($_POST['id'] ?? 0),
+            (int)($_POST['user_id'] ?? 0),
+            (int)($_POST['task_id'] ?? 0),
+            (int)($_POST['weekday'] ?? 0),
+            isset($_POST['is_active']) ? 1 : 0
+          );
+          $msg = ['type' => 'success', 'text' => 'Asignacion actualizada'];
+        }
+
+        if ($action === 'delete_assignment') {
+          Task::deleteAssignment((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Asignacion eliminada'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $workers = User::allWorkers();
+    $tasks = Task::catalogAll();
+    $assignments = Task::assignmentsAll();
+    $board = Task::weeklyBoard();
+
+    $this->view('admin/tasks', compact('msg', 'workers', 'tasks', 'assignments', 'board'));
   }
 
 

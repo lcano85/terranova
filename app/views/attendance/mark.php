@@ -5,7 +5,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
 <div class="container py-5" style="max-width: 520px;">
   <div class="card shadow-sm">
     <div class="card-body">
-      <h4 class="mb-1">Marcación de Asistencia</h4>
+      <h4 class="mb-1">Marcacion de Asistencia</h4>
       <div class="text-muted mb-3">Entrada / Salida</div>
 
       <?php if (!empty($msg)): ?>
@@ -19,7 +19,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
           <label class="form-label">Tipo documento</label>
           <select class="form-select" name="document_type" required>
             <option value="dni">DNI</option>
-            <option value="cedula">Cédula</option>
+            <option value="cedula">Cedula</option>
           </select>
         </div>
 
@@ -29,7 +29,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
         </div>
 
         <div class="mb-3">
-          <label class="form-label">Tipo de marcación</label>
+          <label class="form-label">Tipo de marcacion</label>
           <select class="form-select" name="mark_type" required>
             <option value="in">Entrada</option>
             <option value="out">Salida</option>
@@ -39,18 +39,21 @@ require_once __DIR__ . '/../../core/Csrf.php';
         <input type="hidden" name="latitude" id="latitude">
         <input type="hidden" name="longitude" id="longitude">
 
-
         <button class="btn btn-success w-100">Marcar</button>
       </form>
 
       <div class="mt-3">
         <button type="button" class="btn btn-outline-primary w-100" id="btnPromo" data-bs-toggle="modal" data-bs-target="#modalPromo">
-          Ver promoción del día
+          Ver promocion del dia
         </button>
       </div>
 
+      <div class="mt-2">
+        <a href="/tasks/board" class="btn btn-outline-secondary w-100">Ver tablero de tareas</a>
+      </div>
+
       <div class="text-muted small mt-3">
-        ¿Admin o trabajador? <a href="/login">Inicia sesión</a>
+        Admin o trabajador? <a href="/login">Inicia sesion</a>
       </div>
     </div>
   </div>
@@ -60,7 +63,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Promoción del día</h5>
+        <h5 class="modal-title">Promocion del dia</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -95,14 +98,14 @@ require_once __DIR__ . '/../../core/Csrf.php';
         const data = await res.json();
 
         if (!data || !data.ok) {
-          meta.textContent = 'No se pudo cargar la promoción.';
+          meta.textContent = 'No se pudo cargar la promocion.';
           return;
         }
 
-        meta.textContent = `${data.weekdayLabel ?? ''} • ${data.shiftLabel ?? ''}`.trim();
+        meta.textContent = `${data.weekdayLabel ?? ''} - ${data.shiftLabel ?? ''}`.trim();
 
         if (!data.hasPromo) {
-          content.textContent = data.message || 'No hay promoción configurada para hoy.';
+          content.textContent = data.message || 'No hay promocion configurada para hoy.';
           return;
         }
 
@@ -112,7 +115,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
         }
         content.textContent = data.content || '';
       } catch (e) {
-        meta.textContent = 'No se pudo cargar la promoción.';
+        meta.textContent = 'No se pudo cargar la promocion.';
         content.textContent = '';
       }
     });

@@ -9,6 +9,7 @@ require_once __DIR__ . '/../models/InventoryItem.php';
 require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/Requirement.php';
 require_once __DIR__ . '/../models/Activity.php';
+require_once __DIR__ . '/../models/Task.php';
 
 class WorkerController extends Controller {
   private function calculateShiftMinutes(array $user): int
@@ -318,6 +319,15 @@ class WorkerController extends Controller {
       'board',
       'selectedToday'
     ));
+  }
+
+  public function tasks(): void {
+    Auth::requireRole('worker');
+
+    $base = Auth::user();
+    $user = User::findWithDetails((int)$base['id']) ?: $base;
+    $board = Task::weeklyBoard();
+    $this->view('worker/tasks', compact('user', 'board'));
   }
 
   public function inventory(): void {
