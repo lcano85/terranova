@@ -21,6 +21,7 @@ class App {
       '/admin/workers' => ['AdminController', 'workers'],
       '/admin/shifts' => ['AdminController', 'shifts'],
       '/admin/areas' => ['AdminController', 'areas'],
+      '/admin/purchase-areas' => ['AdminController', 'purchaseAreas'],
       '/admin/promotions' => ['AdminController', 'promotions'],
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/inventory' => ['AdminController', 'inventory'],

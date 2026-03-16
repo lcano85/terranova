@@ -8,6 +8,83 @@ require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
 
 class WorkerController extends Controller {
+  private function calculateShiftMinutes(array $user): int
+  {
+    if (!empty($user['start_time']) && !empty($user['end_time'])) {
+      $start = DateTime::createFromFormat('H:i:s', $user['start_time']);
+      $end = DateTime::createFromFormat('H:i:s', $user['end_time']);
+      if ($start && $end) {
+        $start->setDate(2000, 1, 1);
+        $end->setDate(2000, 1, 1);
+        if ($end <= $start) {
+          $end->modify('+1 day');
+        }
+
+        $minutes = (int)(($end->getTimestamp() - $start->getTimestamp()) / 60);
+        if ($minutes > 0) {
+          return $minutes;
+        }
+      }
+    }
+
+    return 540;
+  }
+
+  private function countWorkDays(string $from, string $to): int
+  {
+    $count = 0;
+    $dt = new DateTime($from);
+    $end = new DateTime($to);
+
+    while ($dt <= $end) {
+      if ((int)$dt->format('N') !== 7) {
+        $count++;
+      }
+      $dt->modify('+1 day');
+    }
+
+    return $count;
+  }
+
+  private function listMissingWorkDays(string $from, string $to, array $workedDates): array
+  {
+    $workedMap = array_fill_keys($workedDates, true);
+    $missing = [];
+    $dt = new DateTime($from);
+    $end = new DateTime($to);
+
+    while ($dt <= $end) {
+      $day = $dt->format('Y-m-d');
+      if ((int)$dt->format('N') !== 7 && empty($workedMap[$day])) {
+        $missing[] = $day;
+      }
+      $dt->modify('+1 day');
+    }
+
+    return $missing;
+  }
+
+  private function buildPaySummary(?float $dailyRate, int $shiftMinutes, int $lateMinutes, int $scheduledDays): array
+  {
+    if ($dailyRate === null || $dailyRate <= 0) {
+      return [
+        'gross' => null,
+        'discount' => null,
+        'net' => null
+      ];
+    }
+
+    $gross = round($scheduledDays * $dailyRate, 2);
+    $discountPerMin = $dailyRate / $shiftMinutes;
+    $discount = round($discountPerMin * $lateMinutes, 2);
+
+    return [
+      'gross' => $gross,
+      'discount' => $discount,
+      'net' => round($gross - $discount, 2)
+    ];
+  }
+
   public function dashboard(): void {
     Auth::requireRole('worker');
     $user = Auth::user();
@@ -18,61 +95,106 @@ class WorkerController extends Controller {
   public function profile(): void {
     Auth::requireRole('worker');
 
-    // Traer al usuario con detalles (turno, área, pago)
     $base = Auth::user();
     $user = User::findWithDetails((int)$base['id']) ?: $base;
 
-    // Rango dinámico: del día 1 al último día del mes actual
     $now = new DateTime();
     $from = $now->format('Y-m-01');
     $to = $now->format('Y-m-t');
+    $today = $now->format('Y-m-d');
+    $lateCutoff = $today < $to ? $today : $to;
 
-    $summary = Attendance::monthlySummary((int)$user['id'], $from, $to);
+    $summary = Attendance::monthlySummary(
+      (int)$user['id'],
+      $from,
+      $to,
+      $user['start_time'] ?? null,
+      $user['end_time'] ?? null
+    );
 
-    // Horas trabajadas
+    $firstHalfFrom = $from;
+    $firstHalfTo = $now->format('Y-m-15');
+    $secondHalfFrom = $now->format('Y-m-16');
+    $secondHalfTo = $to;
+
+    $firstHalfSummary = Attendance::monthlySummary(
+      (int)$user['id'],
+      $firstHalfFrom,
+      $firstHalfTo,
+      $user['start_time'] ?? null,
+      $user['end_time'] ?? null
+    );
+    $secondHalfSummary = Attendance::monthlySummary(
+      (int)$user['id'],
+      $secondHalfFrom,
+      $secondHalfTo,
+      $user['start_time'] ?? null,
+      $user['end_time'] ?? null
+    );
+
     $hours = round(((int)$summary['total_seconds']) / 3600, 2);
-
-    // Cálculo de descuento por tardanza:
-    // descuentoPorMin = pagoDiario / minutosTurno
     $dailyRate = isset($user['daily_rate']) ? (float)$user['daily_rate'] : null;
+    $shiftMinutes = $this->calculateShiftMinutes($user);
 
-    $shiftMinutes = null;
-    if (!empty($user['start_time']) && !empty($user['end_time'])) {
-      $st = DateTime::createFromFormat('H:i:s', $user['start_time']);
-      $en = DateTime::createFromFormat('H:i:s', $user['end_time']);
-      if ($st && $en) {
-        // Ajuste por si el turno cruza medianoche
-        $baseDate = new DateTime('2000-01-01');
-        $st->setDate(2000,1,1);
-        $en->setDate(2000,1,1);
-        if ($en <= $st) $en->modify('+1 day');
-        $shiftMinutes = (int)(($en->getTimestamp() - $st->getTimestamp()) / 60);
+    $totalWorkDays = $this->countWorkDays($from, $to);
+    $elapsedWorkDays = $this->countWorkDays($from, $lateCutoff);
+    $missingDays = $this->listMissingWorkDays($from, $lateCutoff, $summary['worked_dates'] ?? []);
+    $absent = count($missingDays);
+
+    $workedDays = 0;
+    foreach (($summary['worked_dates'] ?? []) as $workedDate) {
+      $dt = new DateTime($workedDate);
+      if ((int)$dt->format('N') !== 7) {
+        $workedDays++;
       }
     }
-    // Fallback al típico 7 a 4 (9h = 540 min)
-    if (!$shiftMinutes || $shiftMinutes <= 0) $shiftMinutes = 540;
 
-    $discount = 0.0;
-    if ($dailyRate !== null && $dailyRate > 0) {
-      $discountPerMin = $dailyRate / $shiftMinutes;
-      $discount = round($discountPerMin * (int)$summary['total_minutes_late'], 2);
-    }
+    $firstHalfScheduledDays = $this->countWorkDays($firstHalfFrom, $firstHalfTo);
+    $secondHalfScheduledDays = $this->countWorkDays($secondHalfFrom, $secondHalfTo);
 
-    $gross = ($dailyRate !== null) ? round(((int)$summary['worked_days']) * $dailyRate, 2) : null;
-    $net = ($gross !== null) ? round($gross - $discount, 2) : null;
+    $firstHalfPay = $this->buildPaySummary(
+      $dailyRate,
+      $shiftMinutes,
+      (int)($firstHalfSummary['total_minutes_late'] ?? 0),
+      $firstHalfScheduledDays
+    );
+    $secondHalfPay = $this->buildPaySummary(
+      $dailyRate,
+      $shiftMinutes,
+      (int)($secondHalfSummary['total_minutes_late'] ?? 0),
+      $secondHalfScheduledDays
+    );
+    $monthPay = $this->buildPaySummary(
+      $dailyRate,
+      $shiftMinutes,
+      (int)($summary['total_minutes_late'] ?? 0),
+      $totalWorkDays
+    );
 
-    // Días ausentes: Lunes a Sábado del mes actual - días trabajados
-    $totalWorkDays = 0;
-    $dt = new DateTime($from);
-    $end = new DateTime($to);
-    while ($dt <= $end) {
-      $dow = (int)$dt->format('N'); // 1=Mon..7=Sun
-      if ($dow >= 1 && $dow <= 6) $totalWorkDays++;
-      $dt->modify('+1 day');
-    }
-    $absent = max(0, $totalWorkDays - (int)$summary['worked_days']);
-
-    $this->view('worker/profile', compact('user','summary','from','to','hours','discount','gross','net','absent','totalWorkDays','dailyRate'));
+    $this->view('worker/profile', compact(
+      'user',
+      'summary',
+      'from',
+      'to',
+      'hours',
+      'dailyRate',
+      'absent',
+      'workedDays',
+      'totalWorkDays',
+      'elapsedWorkDays',
+      'missingDays',
+      'firstHalfFrom',
+      'firstHalfTo',
+      'secondHalfFrom',
+      'secondHalfTo',
+      'firstHalfScheduledDays',
+      'secondHalfScheduledDays',
+      'firstHalfSummary',
+      'secondHalfSummary',
+      'firstHalfPay',
+      'secondHalfPay',
+      'monthPay'
+    ));
   }
 
   public function myAttendance(): void {

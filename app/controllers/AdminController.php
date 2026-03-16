@@ -7,6 +7,7 @@ require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/Shift.php';
 require_once __DIR__ . '/../models/Attendance.php';
 require_once __DIR__ . '/../models/WorkArea.php';
+require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/WorkerPayRate.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
@@ -179,6 +180,41 @@ class AdminController extends Controller
 
     $areas = WorkArea::all();
     $this->view('admin/areas', compact('areas', 'msg'));
+  }
+
+  public function purchaseAreas(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          PurchaseArea::create(trim((string)$_POST['name']), isset($_POST['is_active']) ? 1 : 0);
+          $msg = ['type' => 'success', 'text' => 'Area de compra creada'];
+        }
+        if ($action === 'update') {
+          PurchaseArea::update((int)$_POST['id'], trim((string)$_POST['name']));
+          $msg = ['type' => 'success', 'text' => 'Area de compra actualizada'];
+        }
+        if ($action === 'activate') {
+          PurchaseArea::setActive((int)$_POST['id'], 1);
+          $msg = ['type' => 'success', 'text' => 'Area de compra activada'];
+        }
+        if ($action === 'deactivate') {
+          PurchaseArea::setActive((int)$_POST['id'], 0);
+          $msg = ['type' => 'warning', 'text' => 'Area de compra desactivada'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $areas = PurchaseArea::all();
+    $this->view('admin/purchase_areas', compact('areas', 'msg'));
   }
 
 
