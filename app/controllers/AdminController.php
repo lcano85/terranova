@@ -9,6 +9,7 @@ require_once __DIR__ . '/../models/Attendance.php';
 require_once __DIR__ . '/../models/WorkArea.php';
 require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/Requirement.php';
+require_once __DIR__ . '/../models/Activity.php';
 require_once __DIR__ . '/../models/WorkerPayRate.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
@@ -266,6 +267,65 @@ class AdminController extends Controller
     }
 
     $this->view('admin/requirements', compact('msg', 'week', 'grouped'));
+  }
+
+  public function activities(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          Activity::createAssignment(
+            (int)($_POST['user_id'] ?? 0),
+            trim((string)($_POST['name'] ?? '')),
+            isset($_POST['is_active']) ? 1 : 0
+          );
+          $msg = ['type' => 'success', 'text' => 'Actividad creada'];
+        }
+
+        if ($action === 'update') {
+          Activity::updateAssignment(
+            (int)($_POST['id'] ?? 0),
+            (int)($_POST['user_id'] ?? 0),
+            trim((string)($_POST['name'] ?? '')),
+            isset($_POST['is_active']) ? 1 : 0
+          );
+          $msg = ['type' => 'success', 'text' => 'Actividad actualizada'];
+        }
+
+        if ($action === 'delete') {
+          Activity::deleteAssignment((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Actividad eliminada'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $workers = User::allWorkers();
+    $assignments = Activity::assignedAll();
+    $week = Activity::weekRangeForDate();
+    $rows = Activity::performedForAdminWeek($week['from']);
+    $board = [];
+
+    foreach ($rows as $row) {
+      $workerKey = (int)$row['user_id'];
+      if (!isset($board[$workerKey])) {
+        $board[$workerKey] = [
+          'worker_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+          'days' => []
+        ];
+      }
+
+      $board[$workerKey]['days'][$row['activity_date']][] = $row['activity_name'];
+    }
+
+    $this->view('admin/activities', compact('msg', 'workers', 'assignments', 'week', 'board'));
   }
 
 

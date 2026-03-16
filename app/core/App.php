@@ -23,6 +23,7 @@ class App {
       '/admin/areas' => ['AdminController', 'areas'],
       '/admin/purchase-areas' => ['AdminController', 'purchaseAreas'],
       '/admin/requirements' => ['AdminController', 'requirements'],
+      '/admin/activities' => ['AdminController', 'activities'],
       '/admin/promotions' => ['AdminController', 'promotions'],
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/inventory' => ['AdminController', 'inventory'],
@@ -35,6 +36,7 @@ class App {
       '/worker/attendance' => ['WorkerController', 'myAttendance'],
       '/worker/inventory' => ['WorkerController', 'inventory'],
       '/worker/requirements' => ['WorkerController', 'requirements'],
+      '/worker/activities' => ['WorkerController', 'activities'],
       '/worker/profile' => ['WorkerController', 'profile'],
     ];
 

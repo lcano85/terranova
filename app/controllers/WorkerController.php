@@ -8,6 +8,7 @@ require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
 require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/Requirement.php';
+require_once __DIR__ . '/../models/Activity.php';
 
 class WorkerController extends Controller {
   private function calculateShiftMinutes(array $user): int
@@ -266,6 +267,57 @@ class WorkerController extends Controller {
     }
 
     $this->view('worker/requirements', compact('user', 'purchaseAreas', 'defaultDate', 'msg', 'week', 'grouped'));
+  }
+
+  public function activities(): void {
+    Auth::requireRole('worker');
+
+    $base = Auth::user();
+    $user = User::findWithDetails((int)$base['id']) ?: $base;
+    $msg = null;
+    $today = date('Y-m-d');
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+
+      try {
+        $activityDate = trim((string)($_POST['activity_date'] ?? ''));
+        $assignmentIds = $_POST['activity_ids'] ?? [];
+
+        if ($activityDate === '') {
+          throw new RuntimeException('La fecha es obligatoria');
+        }
+
+        Activity::saveDailyActivities((int)$user['id'], $activityDate, (array)$assignmentIds);
+        $msg = ['type' => 'success', 'text' => 'Actividades guardadas'];
+        $today = $activityDate;
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $assignedActivities = Activity::assignedByWorker((int)$user['id'], 1);
+    $week = Activity::weekRangeForDate();
+    $rows = Activity::performedByWorkerWeek((int)$user['id'], $week['from']);
+    $board = [];
+    $selectedToday = [];
+
+    foreach ($rows as $row) {
+      $board[$row['activity_date']][] = $row['activity_name'];
+      if ($row['activity_date'] === $today && !empty($row['activity_assignment_id'])) {
+        $selectedToday[] = (int)$row['activity_assignment_id'];
+      }
+    }
+
+    $this->view('worker/activities', compact(
+      'user',
+      'msg',
+      'today',
+      'assignedActivities',
+      'week',
+      'board',
+      'selectedToday'
+    ));
   }
 
   public function inventory(): void {
