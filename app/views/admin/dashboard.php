@@ -1,6 +1,11 @@
 <?php
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
+require_once __DIR__ . '/../../core/Pagination.php';
+
+$latestPagination = Pagination::paginateArray($latest, 'latest_page', 'latest_per_page');
+$latest = $latestPagination['rows'];
+$latestPaginationMeta = $latestPagination['meta'];
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
@@ -70,6 +75,7 @@ Auth::requireRole('admin');
             </tbody>
           </table>
         </div>
+        <?= Pagination::render($latestPaginationMeta) ?>
 
       </div>
     </div>

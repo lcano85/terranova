@@ -7,7 +7,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
   <?php require __DIR__ . '/../layouts/sidebar_worker.php'; ?>
 
   <div class="content p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="page-toolbar mb-3">
       <div>
         <h3 class="mb-0">Mis requerimientos</h3>
         <div class="text-muted small">

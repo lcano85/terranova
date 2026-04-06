@@ -10,8 +10,83 @@ require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/Requirement.php';
 require_once __DIR__ . '/../models/Activity.php';
 require_once __DIR__ . '/../models/Task.php';
+require_once __DIR__ . '/../models/MailNotificationLog.php';
+require_once __DIR__ . '/../core/NotificationMailer.php';
 
 class WorkerController extends Controller {
+  private function notifyAdminsAboutRequirement(int $requirementId): void
+  {
+    $cfg = require __DIR__ . '/../config/mail.php';
+    $recipients = array_values(array_filter(array_map('trim', $cfg['admin_recipients'] ?? [])));
+    if (empty($recipients)) {
+      throw new RuntimeException('No hay correos de administracion configurados en app/config/mail.php');
+    }
+
+    $detail = Requirement::detailForNotification($requirementId);
+    if (!$detail) {
+      throw new RuntimeException('No se pudo obtener el detalle del requerimiento para el correo.');
+    }
+
+    $weeklyDetail = Requirement::weeklyDetailForNotification((int)$detail['user_id'], (string)$detail['week_start']);
+    if (empty($weeklyDetail)) {
+      throw new RuntimeException('No se pudo obtener el bloque semanal del requerimiento para el correo.');
+    }
+
+    $subject = 'Requerimientos semanales registrados - ' . $weeklyDetail['worker_name'];
+    $groupsHtml = '';
+    $groupsText = '';
+    foreach ($weeklyDetail['groups'] as $group) {
+      $itemsHtml = '';
+      $itemsText = '';
+      foreach ($group['items'] as $item) {
+        $itemsHtml .= '<li>' . Helpers::e((string)$item) . '</li>';
+        $itemsText .= '  - ' . $item . "\n";
+      }
+
+      $groupsHtml .= '
+        <div style="margin-bottom:16px;">
+          <p><strong>Area de compra:</strong> ' . Helpers::e($group['purchase_area_name']) . '<br>
+          <strong>Fecha solicitada:</strong> ' . Helpers::e(date('d/m/Y', strtotime($group['required_date']))) . '</p>
+          <ul>' . $itemsHtml . '</ul>
+        </div>
+      ';
+
+      $groupsText .=
+        'Area de compra: ' . $group['purchase_area_name'] . "\n" .
+        'Fecha solicitada: ' . date('d/m/Y', strtotime($group['required_date'])) . "\n" .
+        $itemsText . "\n";
+    }
+
+    $htmlBody = '
+      <h2>Nuevo requerimiento registrado</h2>
+      <p><strong>Trabajador:</strong> ' . Helpers::e($weeklyDetail['worker_name']) . '</p>
+      <p><strong>Documento:</strong> ' . Helpers::e($weeklyDetail['document_number']) . '</p>
+      <p><strong>Area del trabajador:</strong> ' . Helpers::e((string)($weeklyDetail['worker_area_name'] ?? '-')) . '</p>
+      <p><strong>Semana:</strong> ' . Helpers::e(date('d/m/Y', strtotime($weeklyDetail['week_start']))) . '</p>
+      <p><strong>Bloque semanal registrado:</strong></p>
+      ' . $groupsHtml . '
+    ';
+
+    $textBody =
+      "Nuevo requerimiento registrado\n\n" .
+      'Trabajador: ' . $weeklyDetail['worker_name'] . "\n" .
+      'Documento: ' . $weeklyDetail['document_number'] . "\n" .
+      'Area del trabajador: ' . ($weeklyDetail['worker_area_name'] ?: '-') . "\n" .
+      'Semana: ' . date('d/m/Y', strtotime($weeklyDetail['week_start'])) . "\n\n" .
+      "Bloque semanal registrado:\n" .
+      $groupsText;
+
+    $logId = MailNotificationLog::create('requirement_created', $recipients, $subject, $requirementId);
+
+    try {
+      NotificationMailer::send($recipients, $subject, $htmlBody, $textBody);
+      MailNotificationLog::markSent($logId);
+    } catch (Throwable $e) {
+      MailNotificationLog::markFailed($logId, $e->getMessage());
+      throw $e;
+    }
+  }
+
   private function calculateShiftMinutes(array $user): int
   {
     if (!empty($user['start_time']) && !empty($user['end_time'])) {
@@ -216,7 +291,6 @@ class WorkerController extends Controller {
     $msg = null;
     $purchaseAreas = PurchaseArea::active();
     $defaultDate = Requirement::nextAllowedDate();
-
     if (Helpers::isPost()) {
       Csrf::check();
 
@@ -243,8 +317,13 @@ class WorkerController extends Controller {
           throw new RuntimeException('Debes ingresar al menos un item');
         }
 
-        Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items);
-        $msg = ['type' => 'success', 'text' => 'Requerimiento registrado'];
+        $requirementId = Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items);
+        try {
+          $this->notifyAdminsAboutRequirement($requirementId);
+          $msg = ['type' => 'success', 'text' => 'Requerimiento registrado y correo enviado al administrador'];
+        } catch (Throwable $mailError) {
+          $msg = ['type' => 'warning', 'text' => 'Requerimiento registrado, pero el correo no se envio: ' . $mailError->getMessage()];
+        }
         $defaultDate = $requiredDate;
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];

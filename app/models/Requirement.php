@@ -3,6 +3,12 @@ require_once __DIR__ . '/../core/Database.php';
 
 class Requirement
 {
+  public static function normalizeWeekStart(?string $weekStart = null): string
+  {
+    $week = self::weekRangeForDate($weekStart);
+    return $week['from'];
+  }
+
   public static function weekRangeForDate(?string $date = null): array
   {
     $base = $date ? new DateTime($date) : new DateTime();
@@ -38,7 +44,7 @@ class Requirement
     return $weekday === 4 || $weekday === 6;
   }
 
-  public static function create(int $userId, int $purchaseAreaId, string $requiredDate, array $items): void
+  public static function create(int $userId, int $purchaseAreaId, string $requiredDate, array $items): int
   {
     $pdo = Database::conn();
     $week = self::weekRangeForDate($requiredDate);
@@ -63,6 +69,7 @@ class Requirement
       }
 
       $pdo->commit();
+      return $requirementId;
     } catch (Throwable $e) {
       if ($pdo->inTransaction()) {
         $pdo->rollBack();
@@ -128,5 +135,119 @@ class Requirement
       WHERE id=?
     ");
     $st->execute([$isPurchased, $purchasedAt, $itemId]);
+  }
+
+  public static function detailForNotification(int $requirementId): ?array
+  {
+    $st = Database::conn()->prepare("
+      SELECT
+        r.id AS requirement_id,
+        r.user_id,
+        r.required_date,
+        r.week_start,
+        u.first_name,
+        u.last_name,
+        u.document_number,
+        wa.name AS worker_area_name,
+        pa.name AS purchase_area_name,
+        ri.item_name
+      FROM requirements r
+      JOIN users u ON u.id = r.user_id
+      LEFT JOIN work_areas wa ON wa.id = u.area_id
+      JOIN purchase_areas pa ON pa.id = r.purchase_area_id
+      JOIN requirement_items ri ON ri.requirement_id = r.id
+      WHERE r.id=?
+      ORDER BY ri.id ASC
+    ");
+    $st->execute([$requirementId]);
+    $rows = $st->fetchAll();
+    if (empty($rows)) {
+      return null;
+    }
+
+    $first = $rows[0];
+    return [
+      'requirement_id' => (int)$first['requirement_id'],
+      'user_id' => (int)$first['user_id'],
+      'required_date' => $first['required_date'],
+      'week_start' => $first['week_start'],
+      'worker_name' => trim($first['first_name'] . ' ' . $first['last_name']),
+      'document_number' => $first['document_number'],
+      'worker_area_name' => $first['worker_area_name'],
+      'purchase_area_name' => $first['purchase_area_name'],
+      'items' => array_map(static fn($row) => $row['item_name'], $rows),
+    ];
+  }
+
+  public static function weeklyDetailForNotification(int $userId, string $weekStart): array
+  {
+    $st = Database::conn()->prepare("
+      SELECT
+        r.id AS requirement_id,
+        r.required_date,
+        r.week_start,
+        u.first_name,
+        u.last_name,
+        u.document_number,
+        wa.name AS worker_area_name,
+        pa.name AS purchase_area_name,
+        ri.item_name
+      FROM requirements r
+      JOIN users u ON u.id = r.user_id
+      LEFT JOIN work_areas wa ON wa.id = u.area_id
+      JOIN purchase_areas pa ON pa.id = r.purchase_area_id
+      JOIN requirement_items ri ON ri.requirement_id = r.id
+      WHERE r.user_id=?
+        AND r.week_start=?
+      ORDER BY r.required_date ASC, pa.name ASC, ri.id ASC
+    ");
+    $st->execute([$userId, $weekStart]);
+    $rows = $st->fetchAll();
+    if (empty($rows)) {
+      return [];
+    }
+
+    $first = $rows[0];
+    $groups = [];
+    foreach ($rows as $row) {
+      $key = $row['required_date'] . '|' . $row['purchase_area_name'];
+      if (!isset($groups[$key])) {
+        $groups[$key] = [
+          'required_date' => $row['required_date'],
+          'purchase_area_name' => $row['purchase_area_name'],
+          'items' => [],
+        ];
+      }
+      $groups[$key]['items'][] = $row['item_name'];
+    }
+
+    return [
+      'week_start' => $first['week_start'],
+      'worker_name' => trim($first['first_name'] . ' ' . $first['last_name']),
+      'document_number' => $first['document_number'],
+      'worker_area_name' => $first['worker_area_name'],
+      'groups' => array_values($groups),
+    ];
+  }
+
+  public static function weekOptions(int $limit = 8, ?string $baseDate = null): array
+  {
+    $base = $baseDate ? new DateTime($baseDate) : new DateTime();
+    $week = self::weekRangeForDate($base->format('Y-m-d'));
+    $current = new DateTime($week['from']);
+    $options = [];
+
+    for ($i = 0; $i < $limit; $i++) {
+      $from = $current->format('Y-m-d');
+      $to = (clone $current)->modify('+6 days')->format('Y-m-d');
+      $options[] = [
+        'from' => $from,
+        'to' => $to,
+        'label' => date('d/m/Y', strtotime($from)) . ' - ' . date('d/m/Y', strtotime($to)),
+      ];
+      $current->modify('-7 days');
+    }
+
+    return $options;
   }
 }

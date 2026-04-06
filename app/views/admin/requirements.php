@@ -7,10 +7,74 @@ require_once __DIR__ . '/../../core/Csrf.php';
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
 
   <div class="content p-4">
-    <div class="mb-3">
-      <h3 class="mb-0">Requerimientos</h3>
-      <div class="text-muted small">
-        Semana actual: <?= Helpers::e(date('d/m/Y', strtotime($week['from']))) ?> - <?= Helpers::e(date('d/m/Y', strtotime($week['to']))) ?>
+    <div class="page-toolbar mb-3">
+      <div>
+        <h3 class="mb-0">Requerimientos</h3>
+        <div class="text-muted small">
+          Semana visible: <?= Helpers::e(date('d/m/Y', strtotime($week['from']))) ?> - <?= Helpers::e(date('d/m/Y', strtotime($week['to']))) ?>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <form method="GET" class="row g-2">
+          <div class="col-md-6">
+            <label class="form-label">Semana</label>
+            <select class="form-select" name="week_start" onchange="this.form.submit()">
+              <?php foreach ($weekOptions as $option): ?>
+                <option value="<?= Helpers::e($option['from']) ?>" <?= $selectedWeekStart === $option['from'] ? 'selected' : '' ?>>
+                  <?= Helpers::e($option['label']) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-md-3 d-grid">
+            <label class="form-label">&nbsp;</label>
+            <a class="btn btn-outline-secondary" href="/admin/requirements">Semana actual</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body table-responsive">
+        <div class="page-toolbar mb-3">
+          <div>
+            <h5 class="mb-0">Log de correos</h5>
+            <div class="text-muted small">Ultimos intentos de notificacion por correo al administrador.</div>
+          </div>
+        </div>
+
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Asunto</th>
+              <th>Destinatarios</th>
+              <th>Estado</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($mailLogs as $log): ?>
+              <tr>
+                <td><?= Helpers::e($log['created_at']) ?></td>
+                <td><?= Helpers::e($log['subject']) ?></td>
+                <td><?= Helpers::e($log['recipients'] ?? '-') ?></td>
+                <td>
+                  <span class="badge text-bg-<?= ($log['status'] ?? '') === 'sent' ? 'success' : (($log['status'] ?? '') === 'failed' ? 'danger' : 'secondary') ?>">
+                    <?= Helpers::e($log['status']) ?>
+                  </span>
+                </td>
+                <td><?= Helpers::e($log['error_message'] ?? '-') ?></td>
+              </tr>
+            <?php endforeach; ?>
+            <?php if (empty($mailLogs)): ?>
+              <tr><td colspan="5" class="text-muted">Aun no hay correos registrados.</td></tr>
+            <?php endif; ?>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -20,7 +84,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
 
     <?php if (empty($grouped)): ?>
       <div class="card shadow-sm">
-        <div class="card-body text-muted">No hay requerimientos registrados para esta semana.</div>
+        <div class="card-body text-muted">No hay requerimientos registrados para la semana seleccionada.</div>
       </div>
     <?php endif; ?>
 

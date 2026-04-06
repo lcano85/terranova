@@ -1,6 +1,11 @@
 <?php
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('worker');
+require_once __DIR__ . '/../../core/Pagination.php';
+
+$myAttendancePagination = Pagination::paginateArray($rows, 'my_attendance_page', 'my_attendance_per_page');
+$rows = $myAttendancePagination['rows'];
+$myAttendancePaginationMeta = $myAttendancePagination['meta'];
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_worker.php'; ?>
@@ -40,6 +45,7 @@ Auth::requireRole('worker');
           </tbody>
         </table>
       </div>
+      <?= Pagination::render($myAttendancePaginationMeta) ?>
     </div>
 
   </div>

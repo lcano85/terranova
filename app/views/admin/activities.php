@@ -2,6 +2,7 @@
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
 require_once __DIR__ . '/../../core/Csrf.php';
+require_once __DIR__ . '/../../core/Pagination.php';
 
 function activityWeekDays(string $from): array {
   $days = [];
@@ -18,12 +19,15 @@ function activityWeekDays(string $from): array {
 }
 
 $weekDays = activityWeekDays($week['from']);
+$activitiesPagination = Pagination::paginateArray($assignments, 'activities_page', 'activities_per_page');
+$assignments = $activitiesPagination['rows'];
+$activitiesPaginationMeta = $activitiesPagination['meta'];
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
 
   <div class="content p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="page-toolbar mb-3">
       <div>
         <h3 class="mb-0">Actividades</h3>
         <div class="text-muted small">Administra actividades por trabajador y revisa lo realizado en la semana.</div>
@@ -122,6 +126,7 @@ $weekDays = activityWeekDays($week['from']);
           </tbody>
         </table>
       </div>
+      <?= Pagination::render($activitiesPaginationMeta) ?>
     </div>
 
     <div class="card shadow-sm">
