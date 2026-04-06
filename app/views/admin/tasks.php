@@ -2,6 +2,7 @@
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
 require_once __DIR__ . '/../../core/Csrf.php';
+require_once __DIR__ . '/../../core/Pagination.php';
 
 function taskWeekColumns(): array {
   return [
@@ -15,12 +16,20 @@ function taskWeekColumns(): array {
 }
 
 $weekColumns = taskWeekColumns();
+$tasksTableRows = $tasks;
+$tasksCatalogPagination = Pagination::paginateArray($tasksTableRows, 'tasks_catalog_page', 'tasks_catalog_per_page');
+$tasksTableRows = $tasksCatalogPagination['rows'];
+$tasksCatalogPaginationMeta = $tasksCatalogPagination['meta'];
+
+$assignmentsPagination = Pagination::paginateArray($assignments, 'task_assignments_page', 'task_assignments_per_page');
+$assignments = $assignmentsPagination['rows'];
+$assignmentsPaginationMeta = $assignmentsPagination['meta'];
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
 
   <div class="content p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="page-toolbar mb-3">
       <h3 class="mb-0">Gestion de tareas</h3>
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCreateTask">+ Nueva tarea</button>
     </div>
@@ -31,7 +40,7 @@ $weekColumns = taskWeekColumns();
 
     <div class="card shadow-sm mb-4">
       <div class="card-body table-responsive">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="page-toolbar mb-3">
           <h5 class="mb-0">Catalogo de tareas</h5>
           <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalCreateAssignment">+ Asignar tarea</button>
         </div>
@@ -45,7 +54,7 @@ $weekColumns = taskWeekColumns();
             </tr>
           </thead>
           <tbody>
-            <?php foreach ($tasks as $task): ?>
+            <?php foreach ($tasksTableRows as $task): ?>
               <tr>
                 <td><?= (int)$task['id'] ?></td>
                 <td><?= Helpers::e($task['name']) ?></td>
@@ -98,12 +107,13 @@ $weekColumns = taskWeekColumns();
               </div>
             <?php endforeach; ?>
 
-            <?php if (empty($tasks)): ?>
+            <?php if (empty($tasksTableRows)): ?>
               <tr><td colspan="4" class="text-muted">No hay tareas registradas.</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
       </div>
+      <?= Pagination::render($tasksCatalogPaginationMeta) ?>
     </div>
 
     <div class="card shadow-sm mb-4">
@@ -212,6 +222,7 @@ $weekColumns = taskWeekColumns();
           </tbody>
         </table>
       </div>
+      <?= Pagination::render($assignmentsPaginationMeta) ?>
     </div>
 
     <div class="card shadow-sm">

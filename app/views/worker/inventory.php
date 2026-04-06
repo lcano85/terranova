@@ -2,12 +2,17 @@
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('worker');
 require_once __DIR__ . '/../../core/Csrf.php';
+require_once __DIR__ . '/../../core/Pagination.php';
+
+$workerInventoryPagination = Pagination::paginateArray($rows, 'worker_inventory_page', 'worker_inventory_per_page');
+$rows = $workerInventoryPagination['rows'];
+$workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_worker.php'; ?>
 
   <div class="content p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="page-toolbar mb-3">
       <div>
         <h3 class="mb-0">Mi inventario</h3>
         <div class="text-muted small">
@@ -126,6 +131,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
           </tbody>
         </table>
       </div>
+      <?= Pagination::render($workerInventoryPaginationMeta) ?>
     </div>
 
     <?php if (!empty($user['area_id'])): ?>

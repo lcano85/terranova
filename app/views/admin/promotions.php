@@ -3,6 +3,7 @@ require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
 require_once __DIR__ . '/../../core/Csrf.php';
 require_once __DIR__ . '/../../models/Promotion.php';
+require_once __DIR__ . '/../../core/Pagination.php';
 
 function dayOptions(int $selected = 1): string {
   $days = [1=>'Lunes',2=>'Martes',3=>'Miércoles',4=>'Jueves',5=>'Viernes',6=>'Sábado'];
@@ -25,11 +26,17 @@ function shiftOptions(string $selected = 'morning'): string {
 }
 ?>
 
+<?php
+$promotionsPagination = Pagination::paginateArray($promos, 'promos_page', 'promos_per_page');
+$promos = $promotionsPagination['rows'];
+$promotionsPaginationMeta = $promotionsPagination['meta'];
+?>
+
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
 
   <div class="content p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="page-toolbar mb-3">
       <div>
         <h3 class="mb-0">Promociones</h3>
         <div class="text-muted small">Se repiten automáticamente por día (Lun–Sáb) y turno (mañana/tarde), sin fechas.</div>
@@ -142,6 +149,7 @@ function shiftOptions(string $selected = 'morning'): string {
           </tbody>
         </table>
       </div>
+      <?= Pagination::render($promotionsPaginationMeta) ?>
     </div>
 
     <div class="modal fade" id="modalCreate" tabindex="-1">

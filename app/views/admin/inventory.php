@@ -1,6 +1,7 @@
 <?php
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
+require_once __DIR__ . '/../../core/Pagination.php';
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
@@ -42,12 +43,19 @@ Auth::requireRole('admin');
     <?php endif; ?>
 
     <?php foreach ($grouped as $areaName => $items): ?>
+      <?php
+      $totalItemsInArea = count($items);
+      $inventoryGroupKey = substr(md5($areaName), 0, 8);
+      $inventoryGroupPagination = Pagination::paginateArray($items, 'inventory_page_' . $inventoryGroupKey, 'inventory_per_page_' . $inventoryGroupKey);
+      $items = $inventoryGroupPagination['rows'];
+      $inventoryGroupPaginationMeta = $inventoryGroupPagination['meta'];
+      ?>
       <div class="card shadow-sm mb-3">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-3">
+          <div class="page-toolbar mb-3">
             <div>
               <h5 class="mb-0"><?= Helpers::e($areaName) ?></h5>
-              <div class="text-muted small"><?= count($items) ?> item(s) registrados</div>
+              <div class="text-muted small"><?= $totalItemsInArea ?> item(s) registrados</div>
             </div>
           </div>
 
@@ -85,6 +93,7 @@ Auth::requireRole('admin');
               </tbody>
             </table>
           </div>
+          <?= Pagination::render($inventoryGroupPaginationMeta) ?>
         </div>
       </div>
     <?php endforeach; ?>

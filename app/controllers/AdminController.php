@@ -14,9 +14,122 @@ require_once __DIR__ . '/../models/Task.php';
 require_once __DIR__ . '/../models/WorkerPayRate.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
+require_once __DIR__ . '/../models/ProductCategory.php';
+require_once __DIR__ . '/../models/Product.php';
+require_once __DIR__ . '/../models/MonthlyProductSale.php';
+require_once __DIR__ . '/../models/SalesImportAudit.php';
+require_once __DIR__ . '/../models/MailNotificationLog.php';
+require_once __DIR__ . '/../core/XlsxReader.php';
 
 class AdminController extends Controller
 {
+  private function spreadsheetRowsToAssoc(array $rows): array
+  {
+    if (count($rows) < 2) {
+      return [];
+    }
+
+    $headers = array_map(static fn($value) => trim((string)$value), $rows[0]);
+    $items = [];
+
+    for ($i = 1; $i < count($rows); $i++) {
+      $row = $rows[$i];
+      $assoc = [];
+
+      foreach ($headers as $index => $header) {
+        if ($header === '') {
+          continue;
+        }
+        $assoc[$header] = isset($row[$index]) ? trim((string)$row[$index]) : '';
+      }
+
+      if (implode('', $assoc) !== '') {
+        $items[] = $assoc;
+      }
+    }
+
+    return $items;
+  }
+
+  private function uploadedXlsxPath(string $fieldName): array
+  {
+    $file = $_FILES[$fieldName] ?? null;
+    if (!$file || !is_array($file) || (int)($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+      throw new RuntimeException('Debes subir un archivo .xlsx valido.');
+    }
+
+    $name = (string)($file['name'] ?? '');
+    if (strtolower(pathinfo($name, PATHINFO_EXTENSION)) !== 'xlsx') {
+      throw new RuntimeException('Solo se permiten archivos .xlsx.');
+    }
+
+    return [
+      'tmp_name' => (string)$file['tmp_name'],
+      'name' => $name,
+    ];
+  }
+
+  private function resolveSalesPeriodMonth(string $fileName, ?string $rawMonth): string
+  {
+    $rawMonth = trim((string)$rawMonth);
+    if ($rawMonth !== '') {
+      $date = DateTime::createFromFormat('Y-m', $rawMonth);
+      if (!$date) {
+        throw new RuntimeException('El mes seleccionado no es valido.');
+      }
+      return $date->format('Y-m-01');
+    }
+
+    if (preg_match_all('/(\d{2})_(\d{2})_(\d{4})/', $fileName, $matches, PREG_SET_ORDER) >= 1) {
+      $first = DateTime::createFromFormat('d_m_Y', $matches[0][0]);
+      $last = count($matches) > 1 ? DateTime::createFromFormat('d_m_Y', $matches[count($matches) - 1][0]) : $first;
+
+      if (!$first || !$last) {
+        throw new RuntimeException('No se pudo detectar el mes del archivo.');
+      }
+
+      if ($first->format('Y-m') !== $last->format('Y-m')) {
+        throw new RuntimeException('El archivo debe corresponder a un solo mes.');
+      }
+
+      return $first->format('Y-m-01');
+    }
+
+    throw new RuntimeException('Selecciona el mes de ventas a importar.');
+  }
+
+  private function importInventoryCatalog(array $upload): int
+  {
+    $rows = $this->spreadsheetRowsToAssoc(XlsxReader::rows($upload['tmp_name']));
+    $count = 0;
+
+    foreach ($rows as $row) {
+      if (trim((string)($row['PRODUCTO'] ?? '')) === '') {
+        continue;
+      }
+      Product::upsertFromInventoryRow($row);
+      $count++;
+    }
+
+    return $count;
+  }
+
+  private function importMonthlySales(array $upload, ?string $rawMonth): array
+  {
+    $rows = $this->spreadsheetRowsToAssoc(XlsxReader::rows($upload['tmp_name']));
+    $periodMonth = $this->resolveSalesPeriodMonth($upload['name'], $rawMonth);
+    $result = MonthlyProductSale::replaceMonthFromRows($periodMonth, $rows, $upload['name']);
+
+    return [
+      'count' => $result['count'],
+      'period_month' => $periodMonth,
+      'audit_id' => $result['audit_id'],
+      'issues_count' => $result['issues_count'],
+      'raw_total_amount' => $result['raw_total_amount'],
+      'normalized_total_amount' => $result['normalized_total_amount'],
+    ];
+  }
+
   private function calculateMinutesLate(int $userId, string $type, DateTime $markedAt): int
   {
     if ($type !== 'in') {
@@ -224,6 +337,7 @@ class AdminController extends Controller
   {
     Auth::requireRole('admin');
     $msg = null;
+    $selectedWeekStart = Requirement::normalizeWeekStart($_GET['week_start'] ?? null);
 
     if (Helpers::isPost()) {
       Csrf::check();
@@ -242,8 +356,10 @@ class AdminController extends Controller
       }
     }
 
-    $week = Requirement::weekRangeForDate();
+    $week = Requirement::weekRangeForDate($selectedWeekStart);
     $rows = Requirement::forAdminWeek($week['from']);
+    $weekOptions = Requirement::weekOptions(8);
+    $mailLogs = array_slice($this->requirementMailLogs(), 0, 10);
     $grouped = [];
 
     foreach ($rows as $row) {
@@ -267,7 +383,20 @@ class AdminController extends Controller
       $grouped[$workerKey]['areas'][$areaKey]['items'][] = $row;
     }
 
-    $this->view('admin/requirements', compact('msg', 'week', 'grouped'));
+    $this->view('admin/requirements', compact('msg', 'week', 'grouped', 'selectedWeekStart', 'weekOptions', 'mailLogs'));
+  }
+
+  private function requirementMailLogs(): array
+  {
+    MailNotificationLog::ensureSchema();
+    $pdo = Database::conn();
+    return $pdo->query("
+      SELECT *
+      FROM mail_notification_logs
+      WHERE notification_type='requirement_created'
+      ORDER BY created_at DESC, id DESC
+      LIMIT 20
+    ")->fetchAll();
   }
 
   public function activities(): void
@@ -557,5 +686,166 @@ class AdminController extends Controller
     }
 
     $this->view('admin/inventory', compact('areas', 'rows', 'grouped', 'areaId', 'status'));
+  }
+
+  public function products(): void
+  {
+    Auth::requireRole('admin');
+    Product::ensureSchema();
+    MonthlyProductSale::ensureSchema();
+
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create_category') {
+          ProductCategory::create(trim((string)($_POST['name'] ?? '')));
+          $msg = ['type' => 'success', 'text' => 'Categoria creada'];
+        }
+
+        if ($action === 'update_category') {
+          ProductCategory::update((int)($_POST['id'] ?? 0), trim((string)($_POST['name'] ?? '')));
+          $msg = ['type' => 'success', 'text' => 'Categoria actualizada'];
+        }
+
+        if ($action === 'delete_category') {
+          ProductCategory::delete((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Categoria eliminada'];
+        }
+
+        if ($action === 'create_product') {
+          Product::create([
+            'category_id' => (int)($_POST['category_id'] ?? 0),
+            'name' => trim((string)($_POST['name'] ?? '')),
+            'variant' => trim((string)($_POST['variant'] ?? '')),
+            'brand' => trim((string)($_POST['brand'] ?? '')),
+            'internal_code' => trim((string)($_POST['internal_code'] ?? '')),
+            'manufacturer_code' => trim((string)($_POST['manufacturer_code'] ?? '')),
+            'unit_price' => $_POST['unit_price'] ?? null,
+            'cost_price' => $_POST['cost_price'] ?? null,
+            'stock_quantity' => $_POST['stock_quantity'] ?? null,
+            'is_active' => isset($_POST['is_active']) ? 1 : 0,
+          ]);
+          $msg = ['type' => 'success', 'text' => 'Producto creado'];
+        }
+
+        if ($action === 'update_product') {
+          Product::update((int)($_POST['id'] ?? 0), [
+            'category_id' => (int)($_POST['category_id'] ?? 0),
+            'name' => trim((string)($_POST['name'] ?? '')),
+            'variant' => trim((string)($_POST['variant'] ?? '')),
+            'brand' => trim((string)($_POST['brand'] ?? '')),
+            'internal_code' => trim((string)($_POST['internal_code'] ?? '')),
+            'manufacturer_code' => trim((string)($_POST['manufacturer_code'] ?? '')),
+            'unit_price' => $_POST['unit_price'] ?? null,
+            'cost_price' => $_POST['cost_price'] ?? null,
+            'stock_quantity' => $_POST['stock_quantity'] ?? null,
+            'is_active' => isset($_POST['is_active']) ? 1 : 0,
+          ]);
+          $msg = ['type' => 'success', 'text' => 'Producto actualizado'];
+        }
+
+        if ($action === 'update_price') {
+          $price = isset($_POST['unit_price']) && $_POST['unit_price'] !== '' ? (float)$_POST['unit_price'] : null;
+          Product::updatePrice((int)($_POST['id'] ?? 0), $price);
+          $msg = ['type' => 'success', 'text' => 'Precio actualizado'];
+        }
+
+        if ($action === 'delete_product') {
+          Product::delete((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Producto eliminado'];
+        }
+
+        if ($action === 'import_inventory') {
+          $upload = $this->uploadedXlsxPath('inventory_file');
+          $count = $this->importInventoryCatalog($upload);
+          $msg = ['type' => 'success', 'text' => 'Catalogo importado: ' . $count . ' producto(s) procesados'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $categoryId = (int)($_GET['category_id'] ?? 0);
+    $search = trim((string)($_GET['q'] ?? ''));
+
+    $summary = Product::summary();
+    $categories = ProductCategory::all();
+    $grouped = Product::groupedByCategory($categoryId > 0 ? $categoryId : null, $search);
+    $rows = Product::byCategory($categoryId > 0 ? $categoryId : null, $search);
+
+    $this->view('admin/products', compact('msg', 'summary', 'categories', 'grouped', 'rows', 'categoryId', 'search'));
+  }
+
+  public function sales(): void
+  {
+    Auth::requireRole('admin');
+    MonthlyProductSale::ensureSchema();
+
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'import_sales') {
+          $upload = $this->uploadedXlsxPath('sales_file');
+          $result = $this->importMonthlySales($upload, $_POST['sales_month'] ?? null);
+          $msg = [
+            'type' => 'success',
+            'text' => 'Ventas importadas: ' . $result['count'] . ' producto(s) para ' . date('m/Y', strtotime($result['period_month'])) .
+              '. Monto origen: S/ ' . number_format((float)$result['raw_total_amount'], 2) .
+              '. Monto normalizado: S/ ' . number_format((float)$result['normalized_total_amount'], 2) .
+              '. Incidencias auditadas: ' . (int)$result['issues_count']
+          ];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $months = MonthlyProductSale::availableMonths();
+    $selectedMonth = trim((string)($_GET['month'] ?? ''));
+    if ($selectedMonth === '' && !empty($months)) {
+      $selectedMonth = date('Y-m', strtotime($months[0]['period_month']));
+    }
+
+    $periodMonth = null;
+    if ($selectedMonth !== '') {
+      $date = DateTime::createFromFormat('Y-m', $selectedMonth);
+      if ($date) {
+        $periodMonth = $date->format('Y-m-01');
+      }
+    }
+
+    $categoryId = (int)($_GET['category_id'] ?? 0);
+    $categories = ProductCategory::all();
+    $overview = $periodMonth ? MonthlyProductSale::overview($periodMonth, $categoryId > 0 ? $categoryId : null) : [];
+    $topProducts = $periodMonth ? MonthlyProductSale::topProducts($periodMonth, null, 20) : [];
+    $topByCategory = $periodMonth ? MonthlyProductSale::topProducts($periodMonth, $categoryId > 0 ? $categoryId : null, 20) : [];
+    $categoryBreakdown = $periodMonth ? MonthlyProductSale::byCategory($periodMonth) : [];
+    $latestAudit = $periodMonth ? SalesImportAudit::latestForMonth($periodMonth) : null;
+    $auditIssues = $latestAudit ? SalesImportAudit::issues((int)$latestAudit['id'], 50) : [];
+    $recentAudits = SalesImportAudit::recent($periodMonth, 10);
+
+    $this->view('admin/sales', compact(
+      'msg',
+      'months',
+      'categories',
+      'selectedMonth',
+      'periodMonth',
+      'categoryId',
+      'overview',
+      'topProducts',
+      'topByCategory',
+      'categoryBreakdown',
+      'latestAudit',
+      'auditIssues',
+      'recentAudits'
+    ));
   }
 }

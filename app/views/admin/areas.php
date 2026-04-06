@@ -2,12 +2,17 @@
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
 require_once __DIR__ . '/../../core/Csrf.php';
+require_once __DIR__ . '/../../core/Pagination.php';
+
+$areasPagination = Pagination::paginateArray($areas, 'areas_page', 'areas_per_page');
+$areas = $areasPagination['rows'];
+$areasPaginationMeta = $areasPagination['meta'];
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
 
   <div class="content p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="page-toolbar mb-3">
       <h3 class="mb-0">Áreas de trabajo</h3>
       <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalCreate">+ Nueva</button>
     </div>
@@ -78,6 +83,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
           </tbody>
         </table>
       </div>
+      <?= Pagination::render($areasPaginationMeta) ?>
     </div>
 
     <div class="modal fade" id="modalCreate" tabindex="-1">

@@ -29,6 +29,8 @@ class App {
       '/admin/promotions' => ['AdminController', 'promotions'],
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/inventory' => ['AdminController', 'inventory'],
+      '/admin/products' => ['AdminController', 'products'],
+      '/admin/sales' => ['AdminController', 'sales'],
       '/admin/profile' => ['AdminController', 'profile'],
 
       // Público: ver promoción del día (para la pantalla de marcación)
