@@ -5,7 +5,7 @@ return [
   'port' => 587,
   'encryption' => 'tls', // tls | ssl | none
   'username' => 'info@terranovarestobar.com',
-  'password' => 'Xx.159753.xX',
+  'password' => 'password',
   'from_email' => 'info@terranovarestobar.com',
   'from_name' => 'Terranova',
   'admin_recipients' => [
