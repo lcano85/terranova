@@ -11,7 +11,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
       <div>
         <h3 class="mb-0">Mis requerimientos</h3>
         <div class="text-muted small">
-          Semana visible: <?= Helpers::e(date('d/m/Y', strtotime($week['from']))) ?> - <?= Helpers::e(date('d/m/Y', strtotime($week['to']))) ?>
+          Semana actual: <?= Helpers::e(date('d/m/Y', strtotime($week['from']))) ?> - <?= Helpers::e(date('d/m/Y', strtotime($week['to']))) ?>
         </div>
       </div>
     </div>
@@ -19,27 +19,6 @@ require_once __DIR__ . '/../../core/Csrf.php';
     <?php if (!empty($msg)): ?>
       <div class="alert alert-<?= Helpers::e($msg['type']) ?>"><?= Helpers::e($msg['text']) ?></div>
     <?php endif; ?>
-
-    <div class="card shadow-sm mb-3">
-      <div class="card-body">
-        <form method="GET" class="row g-2">
-          <div class="col-md-6">
-            <label class="form-label">Semana</label>
-            <select class="form-select" name="week_start" onchange="this.form.submit()">
-              <?php foreach ($weekOptions as $option): ?>
-                <option value="<?= Helpers::e($option['from']) ?>" <?= $selectedWeekStart === $option['from'] ? 'selected' : '' ?>>
-                  <?= Helpers::e($option['label']) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </div>
-          <div class="col-md-3 d-grid">
-            <label class="form-label">&nbsp;</label>
-            <a class="btn btn-outline-secondary" href="/worker/requirements">Semana actual</a>
-          </div>
-        </form>
-      </div>
-    </div>
 
     <div class="card shadow-sm mb-4">
       <div class="card-body">
@@ -84,10 +63,10 @@ require_once __DIR__ . '/../../core/Csrf.php';
 
     <div class="card shadow-sm">
       <div class="card-body">
-        <h5 class="mb-3">Lista registrada en la semana seleccionada</h5>
+        <h5 class="mb-3">Lista registrada esta semana</h5>
 
         <?php if (empty($grouped)): ?>
-          <div class="text-muted">Aun no tienes requerimientos registrados en la semana seleccionada.</div>
+          <div class="text-muted">Aun no tienes requerimientos registrados esta semana.</div>
         <?php endif; ?>
 
         <?php foreach ($grouped as $group): ?>

@@ -1,15 +1,19 @@
 <?php
 return [
-  'enabled' => false,
-  'host' => 'smtp.tudominio.com',
+  'enabled' => true,
+  'host' => 'mail.terranovarestobar.com',
   'port' => 587,
   'encryption' => 'tls', // tls | ssl | none
-  'username' => 'notificaciones@tudominio.com',
-  'password' => 'cambiar-por-clave-real',
-  'from_email' => 'notificaciones@tudominio.com',
+  'username' => 'info@terranovarestobar.com',
+  'password' => 'Xx.159753.xX',
+  'from_email' => 'info@terranovarestobar.com',
   'from_name' => 'Terranova',
   'admin_recipients' => [
-    'admin@tudominio.com',
+    'terranova.restobar.2026@gmail.com',
   ],
   'connect_timeout' => 20,
+  'verify_peer' => false,
+  'verify_peer_name' => false,
+  'allow_self_signed' => true,
+  'debug' => true,
 ];

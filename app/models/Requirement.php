@@ -142,6 +142,7 @@ class Requirement
     $st = Database::conn()->prepare("
       SELECT
         r.id AS requirement_id,
+        r.user_id,
         r.required_date,
         r.week_start,
         u.first_name,
@@ -167,6 +168,7 @@ class Requirement
     $first = $rows[0];
     return [
       'requirement_id' => (int)$first['requirement_id'],
+      'user_id' => (int)$first['user_id'],
       'required_date' => $first['required_date'],
       'week_start' => $first['week_start'],
       'worker_name' => trim($first['first_name'] . ' ' . $first['last_name']),
@@ -174,6 +176,57 @@ class Requirement
       'worker_area_name' => $first['worker_area_name'],
       'purchase_area_name' => $first['purchase_area_name'],
       'items' => array_map(static fn($row) => $row['item_name'], $rows),
+    ];
+  }
+
+  public static function weeklyDetailForNotification(int $userId, string $weekStart): array
+  {
+    $st = Database::conn()->prepare("
+      SELECT
+        r.id AS requirement_id,
+        r.required_date,
+        r.week_start,
+        u.first_name,
+        u.last_name,
+        u.document_number,
+        wa.name AS worker_area_name,
+        pa.name AS purchase_area_name,
+        ri.item_name
+      FROM requirements r
+      JOIN users u ON u.id = r.user_id
+      LEFT JOIN work_areas wa ON wa.id = u.area_id
+      JOIN purchase_areas pa ON pa.id = r.purchase_area_id
+      JOIN requirement_items ri ON ri.requirement_id = r.id
+      WHERE r.user_id=?
+        AND r.week_start=?
+      ORDER BY r.required_date ASC, pa.name ASC, ri.id ASC
+    ");
+    $st->execute([$userId, $weekStart]);
+    $rows = $st->fetchAll();
+    if (empty($rows)) {
+      return [];
+    }
+
+    $first = $rows[0];
+    $groups = [];
+    foreach ($rows as $row) {
+      $key = $row['required_date'] . '|' . $row['purchase_area_name'];
+      if (!isset($groups[$key])) {
+        $groups[$key] = [
+          'required_date' => $row['required_date'],
+          'purchase_area_name' => $row['purchase_area_name'],
+          'items' => [],
+        ];
+      }
+      $groups[$key]['items'][] = $row['item_name'];
+    }
+
+    return [
+      'week_start' => $first['week_start'],
+      'worker_name' => trim($first['first_name'] . ' ' . $first['last_name']),
+      'document_number' => $first['document_number'],
+      'worker_area_name' => $first['worker_area_name'],
+      'groups' => array_values($groups),
     ];
   }
 

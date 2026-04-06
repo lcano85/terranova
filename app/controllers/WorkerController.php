@@ -27,37 +27,54 @@ class WorkerController extends Controller {
       throw new RuntimeException('No se pudo obtener el detalle del requerimiento para el correo.');
     }
 
-    $subject = 'Nuevo requerimiento registrado - ' . $detail['purchase_area_name'];
-    $itemsHtml = '';
-    $itemsText = '';
-    foreach ($detail['items'] as $item) {
-      $safeItem = Helpers::e((string)$item);
-      $itemsHtml .= '<li>' . $safeItem . '</li>';
-      $itemsText .= '- ' . $item . "\n";
+    $weeklyDetail = Requirement::weeklyDetailForNotification((int)$detail['user_id'], (string)$detail['week_start']);
+    if (empty($weeklyDetail)) {
+      throw new RuntimeException('No se pudo obtener el bloque semanal del requerimiento para el correo.');
+    }
+
+    $subject = 'Requerimientos semanales registrados - ' . $weeklyDetail['worker_name'];
+    $groupsHtml = '';
+    $groupsText = '';
+    foreach ($weeklyDetail['groups'] as $group) {
+      $itemsHtml = '';
+      $itemsText = '';
+      foreach ($group['items'] as $item) {
+        $itemsHtml .= '<li>' . Helpers::e((string)$item) . '</li>';
+        $itemsText .= '  - ' . $item . "\n";
+      }
+
+      $groupsHtml .= '
+        <div style="margin-bottom:16px;">
+          <p><strong>Area de compra:</strong> ' . Helpers::e($group['purchase_area_name']) . '<br>
+          <strong>Fecha solicitada:</strong> ' . Helpers::e(date('d/m/Y', strtotime($group['required_date']))) . '</p>
+          <ul>' . $itemsHtml . '</ul>
+        </div>
+      ';
+
+      $groupsText .=
+        'Area de compra: ' . $group['purchase_area_name'] . "\n" .
+        'Fecha solicitada: ' . date('d/m/Y', strtotime($group['required_date'])) . "\n" .
+        $itemsText . "\n";
     }
 
     $htmlBody = '
       <h2>Nuevo requerimiento registrado</h2>
-      <p><strong>Trabajador:</strong> ' . Helpers::e($detail['worker_name']) . '</p>
-      <p><strong>Documento:</strong> ' . Helpers::e($detail['document_number']) . '</p>
-      <p><strong>Area del trabajador:</strong> ' . Helpers::e((string)($detail['worker_area_name'] ?? '-')) . '</p>
-      <p><strong>Area de compra:</strong> ' . Helpers::e($detail['purchase_area_name']) . '</p>
-      <p><strong>Fecha solicitada:</strong> ' . Helpers::e(date('d/m/Y', strtotime($detail['required_date']))) . '</p>
-      <p><strong>Semana:</strong> ' . Helpers::e(date('d/m/Y', strtotime($detail['week_start']))) . '</p>
-      <p><strong>Items solicitados:</strong></p>
-      <ul>' . $itemsHtml . '</ul>
+      <p><strong>Trabajador:</strong> ' . Helpers::e($weeklyDetail['worker_name']) . '</p>
+      <p><strong>Documento:</strong> ' . Helpers::e($weeklyDetail['document_number']) . '</p>
+      <p><strong>Area del trabajador:</strong> ' . Helpers::e((string)($weeklyDetail['worker_area_name'] ?? '-')) . '</p>
+      <p><strong>Semana:</strong> ' . Helpers::e(date('d/m/Y', strtotime($weeklyDetail['week_start']))) . '</p>
+      <p><strong>Bloque semanal registrado:</strong></p>
+      ' . $groupsHtml . '
     ';
 
     $textBody =
       "Nuevo requerimiento registrado\n\n" .
-      'Trabajador: ' . $detail['worker_name'] . "\n" .
-      'Documento: ' . $detail['document_number'] . "\n" .
-      'Area del trabajador: ' . ($detail['worker_area_name'] ?: '-') . "\n" .
-      'Area de compra: ' . $detail['purchase_area_name'] . "\n" .
-      'Fecha solicitada: ' . date('d/m/Y', strtotime($detail['required_date'])) . "\n" .
-      'Semana: ' . date('d/m/Y', strtotime($detail['week_start'])) . "\n\n" .
-      "Items solicitados:\n" .
-      $itemsText;
+      'Trabajador: ' . $weeklyDetail['worker_name'] . "\n" .
+      'Documento: ' . $weeklyDetail['document_number'] . "\n" .
+      'Area del trabajador: ' . ($weeklyDetail['worker_area_name'] ?: '-') . "\n" .
+      'Semana: ' . date('d/m/Y', strtotime($weeklyDetail['week_start'])) . "\n\n" .
+      "Bloque semanal registrado:\n" .
+      $groupsText;
 
     $logId = MailNotificationLog::create('requirement_created', $recipients, $subject, $requirementId);
 
@@ -274,8 +291,6 @@ class WorkerController extends Controller {
     $msg = null;
     $purchaseAreas = PurchaseArea::active();
     $defaultDate = Requirement::nextAllowedDate();
-    $selectedWeekStart = Requirement::normalizeWeekStart($_GET['week_start'] ?? null);
-
     if (Helpers::isPost()) {
       Csrf::check();
 
@@ -315,10 +330,9 @@ class WorkerController extends Controller {
       }
     }
 
-    $week = Requirement::weekRangeForDate($selectedWeekStart);
+    $week = Requirement::weekRangeForDate();
     $rows = Requirement::forWorkerWeek((int)$user['id'], $week['from']);
     $grouped = [];
-    $weekOptions = Requirement::weekOptions(8);
 
     foreach ($rows as $row) {
       $key = $row['required_date'] . '|' . $row['purchase_area_name'];
@@ -332,7 +346,7 @@ class WorkerController extends Controller {
       $grouped[$key]['items'][] = $row;
     }
 
-    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'defaultDate', 'msg', 'week', 'grouped', 'selectedWeekStart', 'weekOptions'));
+    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'defaultDate', 'msg', 'week', 'grouped'));
   }
 
   public function activities(): void {

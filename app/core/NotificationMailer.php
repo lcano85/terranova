@@ -1,9 +1,19 @@
 <?php
 
+require_once __DIR__ . '/../../vendor/autoload.php';
+
+use PHPMailer\PHPMailer\Exception as PHPMailerException;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\SMTP;
+
 class NotificationMailer
 {
+  private static array $debugLog = [];
+
   public static function send(array $to, string $subject, string $htmlBody, string $textBody = ''): void
   {
+    self::$debugLog = [];
+
     $cfg = require __DIR__ . '/../config/mail.php';
     if (empty($cfg['enabled'])) {
       throw new RuntimeException('El envio SMTP esta deshabilitado en app/config/mail.php');
@@ -17,9 +27,17 @@ class NotificationMailer
     $fromEmail = (string)($cfg['from_email'] ?? '');
     $fromName = (string)($cfg['from_name'] ?? APP_NAME);
     $timeout = (int)($cfg['connect_timeout'] ?? 20);
+    $verifyPeer = (bool)($cfg['verify_peer'] ?? true);
+    $verifyPeerName = (bool)($cfg['verify_peer_name'] ?? true);
+    $allowSelfSigned = (bool)($cfg['allow_self_signed'] ?? false);
+    $debugEnabled = (bool)($cfg['debug'] ?? false);
 
     if ($host === '' || $port <= 0 || $username === '' || $password === '' || $fromEmail === '') {
       throw new RuntimeException('La configuracion SMTP esta incompleta.');
+    }
+
+    if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
+      throw new RuntimeException('El correo remitente no es valido: ' . $fromEmail);
     }
 
     $recipients = array_values(array_filter(array_map('trim', $to)));
@@ -27,100 +45,77 @@ class NotificationMailer
       throw new RuntimeException('No hay destinatarios configurados para el correo.');
     }
 
-    $transportHost = $encryption === 'ssl' ? 'ssl://' . $host : $host;
-    $socket = @stream_socket_client($transportHost . ':' . $port, $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT);
-    if (!$socket) {
-      throw new RuntimeException('No se pudo conectar al servidor SMTP: ' . $errstr . ' (' . $errno . ')');
+    foreach ($recipients as $recipient) {
+      if (!filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+        throw new RuntimeException('Destinatario no valido en app/config/mail.php: ' . $recipient);
+      }
     }
 
-    stream_set_timeout($socket, $timeout);
+    $mail = new PHPMailer(true);
 
     try {
-      self::expect($socket, [220]);
-      self::command($socket, 'EHLO localhost', [250]);
+      $mail->isSMTP();
+      $mail->Host = $host;
+      $mail->Port = $port;
+      $mail->SMTPAuth = true;
+      $mail->Username = $username;
+      $mail->Password = $password;
+      $mail->Timeout = $timeout;
+      $mail->CharSet = 'UTF-8';
+      $mail->Encoding = 'base64';
+      $mail->setFrom($fromEmail, $fromName);
 
-      if ($encryption === 'tls') {
-        self::command($socket, 'STARTTLS', [220]);
-        if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-          throw new RuntimeException('No se pudo iniciar TLS con el servidor SMTP.');
-        }
-        self::command($socket, 'EHLO localhost', [250]);
+      if ($encryption === 'ssl') {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+      } elseif ($encryption === 'tls') {
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+      } else {
+        $mail->SMTPSecure = false;
+        $mail->SMTPAutoTLS = false;
       }
 
-      self::command($socket, 'AUTH LOGIN', [334]);
-      self::command($socket, base64_encode($username), [334]);
-      self::command($socket, base64_encode($password), [235]);
-
-      self::command($socket, 'MAIL FROM:<' . $fromEmail . '>', [250]);
-      foreach ($recipients as $recipient) {
-        self::command($socket, 'RCPT TO:<' . $recipient . '>', [250, 251]);
-      }
-
-      self::command($socket, 'DATA', [354]);
-
-      $boundary = 'b' . bin2hex(random_bytes(12));
-      $headers = [
-        'From: ' . self::headerAddress($fromEmail, $fromName),
-        'To: ' . implode(', ', $recipients),
-        'Subject: ' . self::encodeHeader($subject),
-        'MIME-Version: 1.0',
-        'Content-Type: multipart/alternative; boundary="' . $boundary . '"',
+      $mail->SMTPOptions = [
+        'ssl' => [
+          'verify_peer' => $verifyPeer,
+          'verify_peer_name' => $verifyPeerName,
+          'allow_self_signed' => $allowSelfSigned,
+        ],
       ];
 
-      $textBody = $textBody !== '' ? $textBody : strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>'], ["\n", "\n", "\n", "\n\n"], $htmlBody));
-
-      $message = implode("\r\n", $headers) . "\r\n\r\n";
-      $message .= '--' . $boundary . "\r\n";
-      $message .= "Content-Type: text/plain; charset=UTF-8\r\n";
-      $message .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-      $message .= $textBody . "\r\n\r\n";
-      $message .= '--' . $boundary . "\r\n";
-      $message .= "Content-Type: text/html; charset=UTF-8\r\n";
-      $message .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-      $message .= $htmlBody . "\r\n\r\n";
-      $message .= '--' . $boundary . "--\r\n.";
-
-      fwrite($socket, $message . "\r\n");
-      self::expect($socket, [250]);
-      self::command($socket, 'QUIT', [221]);
-    } finally {
-      fclose($socket);
-    }
-  }
-
-  private static function command($socket, string $command, array $expectedCodes): void
-  {
-    fwrite($socket, $command . "\r\n");
-    self::expect($socket, $expectedCodes);
-  }
-
-  private static function expect($socket, array $expectedCodes): void
-  {
-    $response = '';
-    while (($line = fgets($socket, 515)) !== false) {
-      $response .= $line;
-      if (strlen($line) >= 4 && $line[3] === ' ') {
-        break;
+      if ($debugEnabled) {
+        $mail->SMTPDebug = SMTP::DEBUG_SERVER;
+        $mail->Debugoutput = static function ($str, $level): void {
+          NotificationMailer::debug('L' . $level . ' ' . trim($str));
+        };
       }
-    }
 
-    if ($response === '') {
-      throw new RuntimeException('El servidor SMTP no respondio.');
-    }
+      foreach ($recipients as $recipient) {
+        $mail->addAddress($recipient);
+      }
 
-    $code = (int)substr($response, 0, 3);
-    if (!in_array($code, $expectedCodes, true)) {
-      throw new RuntimeException('Respuesta SMTP inesperada: ' . trim($response));
+      $mail->isHTML(true);
+      $mail->Subject = $subject;
+      $mail->Body = $htmlBody;
+      $mail->AltBody = $textBody !== '' ? $textBody : strip_tags(str_replace(['<br>', '<br/>', '<br />', '</p>'], ["\n", "\n", "\n", "\n\n"], $htmlBody));
+
+      $mail->send();
+    } catch (PHPMailerException $e) {
+      throw new RuntimeException('Error SMTP con PHPMailer: ' . $e->getMessage() . '. ' . self::debugSummary());
+    } catch (Throwable $e) {
+      throw new RuntimeException('Fallo inesperado al enviar correo: ' . $e->getMessage() . '. ' . self::debugSummary());
     }
   }
 
-  private static function headerAddress(string $email, string $name): string
+  public static function debugSummary(): string
   {
-    return self::encodeHeader($name) . ' <' . $email . '>';
+    return empty(self::$debugLog) ? 'Trace: sin salida SMTP' : 'Trace: ' . implode(' | ', self::$debugLog);
   }
 
-  private static function encodeHeader(string $value): string
+  private static function debug(string $line): void
   {
-    return '=?UTF-8?B?' . base64_encode($value) . '?=';
+    self::$debugLog[] = $line;
+    if (count(self::$debugLog) > 60) {
+      array_shift(self::$debugLog);
+    }
   }
 }
