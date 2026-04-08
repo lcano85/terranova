@@ -18,6 +18,7 @@ class App {
       '/attendance/mark' => ['AttendanceController', 'mark'],
       '/tasks/board' => ['TasksController', 'board'],
       '/concurso/cena' => ['LeadDinnerController', 'form'],
+      '/concurso/cena/gracias' => ['LeadDinnerController', 'thankYou'],
 
       '/admin' => ['AdminController', 'dashboard'],
       '/admin/workers' => ['AdminController', 'workers'],

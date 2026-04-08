@@ -83,12 +83,17 @@ class LeadDinnerController extends Controller
           'status_id' => $statusId,
         ]);
 
-        $msg = ['type' => 'success', 'text' => 'Tus datos fueron registrados correctamente.'];
+        Helpers::redirect('/concurso/cena/gracias');
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
     }
 
     $this->view('public/lead_dinner_form', compact('msg'));
+  }
+
+  public function thankYou(): void
+  {
+    $this->view('public/lead_dinner_thank_you');
   }
 }
