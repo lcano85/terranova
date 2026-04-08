@@ -67,7 +67,7 @@ $attendancePaginationMeta = $attendancePagination['meta'];
                     <?= $r['mark_type'] === 'in' ? 'Entrada' : 'Salida' ?>
                   </span>
                 </td>
-                <td><?= Helpers::e($r['marked_at']) ?></td>
+                <td><?= Helpers::e(Helpers::formatDateTime($r['marked_at'])) ?></td>
                 <td><?= (int)$r['minutes_late'] ?> min</td>
                 <td><?= Helpers::e($r['ip_address'] ?? '-') ?></td>
                 <td class="d-flex gap-2">

@@ -12,6 +12,8 @@ $adminLinks = [
   ['/admin/inventory', 'Inventario'],
   ['/admin/products', 'Productos'],
   ['/admin/sales', 'Ventas'],
+  ['/admin/leads-cena', 'Leads Cena'],
+  ['/admin/leads-cena-statuses', 'Estados Leads Cena'],
   ['/admin/promotions', 'Promociones'],
   ['/admin/attendance', 'Asistencia'],
   ['/admin/profile', 'Mi perfil'],

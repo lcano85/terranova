@@ -17,6 +17,7 @@ class App {
 
       '/attendance/mark' => ['AttendanceController', 'mark'],
       '/tasks/board' => ['TasksController', 'board'],
+      '/concurso/cena' => ['LeadDinnerController', 'form'],
 
       '/admin' => ['AdminController', 'dashboard'],
       '/admin/workers' => ['AdminController', 'workers'],
@@ -31,6 +32,8 @@ class App {
       '/admin/inventory' => ['AdminController', 'inventory'],
       '/admin/products' => ['AdminController', 'products'],
       '/admin/sales' => ['AdminController', 'sales'],
+      '/admin/leads-cena' => ['AdminController', 'leadDinnerEntries'],
+      '/admin/leads-cena-statuses' => ['AdminController', 'leadDinnerStatuses'],
       '/admin/profile' => ['AdminController', 'profile'],
 
       // Público: ver promoción del día (para la pantalla de marcación)
