@@ -19,6 +19,8 @@ require_once __DIR__ . '/../models/Product.php';
 require_once __DIR__ . '/../models/MonthlyProductSale.php';
 require_once __DIR__ . '/../models/SalesImportAudit.php';
 require_once __DIR__ . '/../models/MailNotificationLog.php';
+require_once __DIR__ . '/../models/LeadDinnerStatus.php';
+require_once __DIR__ . '/../models/LeadDinnerEntry.php';
 require_once __DIR__ . '/../core/XlsxReader.php';
 
 class AdminController extends Controller
@@ -847,5 +849,67 @@ class AdminController extends Controller
       'auditIssues',
       'recentAudits'
     ));
+  }
+
+  public function leadDinnerStatuses(): void
+  {
+    Auth::requireRole('admin');
+    LeadDinnerStatus::ensureSchema();
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          LeadDinnerStatus::create(trim((string)($_POST['name'] ?? '')), isset($_POST['is_active']) ? 1 : 0);
+          $msg = ['type' => 'success', 'text' => 'Estado creado'];
+        }
+
+        if ($action === 'update') {
+          LeadDinnerStatus::update((int)($_POST['id'] ?? 0), trim((string)($_POST['name'] ?? '')), isset($_POST['is_active']) ? 1 : 0);
+          $msg = ['type' => 'success', 'text' => 'Estado actualizado'];
+        }
+
+        if ($action === 'delete') {
+          LeadDinnerStatus::delete((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Estado eliminado'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $statuses = LeadDinnerStatus::all();
+    $this->view('admin/lead_dinner_statuses', compact('statuses', 'msg'));
+  }
+
+  public function leadDinnerEntries(): void
+  {
+    Auth::requireRole('admin');
+    LeadDinnerEntry::ensureSchema();
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'update_status') {
+          LeadDinnerEntry::updateStatus((int)($_POST['id'] ?? 0), (int)($_POST['status_id'] ?? 0));
+          $msg = ['type' => 'success', 'text' => 'Estado del lead actualizado'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $statusId = (int)($_GET['status_id'] ?? 0);
+    $search = trim((string)($_GET['q'] ?? ''));
+    $statuses = LeadDinnerStatus::all();
+    $rows = LeadDinnerEntry::all($statusId > 0 ? $statusId : null, $search);
+
+    $this->view('admin/lead_dinner_entries', compact('rows', 'statuses', 'statusId', 'search', 'msg'));
   }
 }

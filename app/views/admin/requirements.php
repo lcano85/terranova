@@ -59,7 +59,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
           <tbody>
             <?php foreach ($mailLogs as $log): ?>
               <tr>
-                <td><?= Helpers::e($log['created_at']) ?></td>
+                <td><?= Helpers::e(Helpers::formatDateTime($log['created_at'])) ?></td>
                 <td><?= Helpers::e($log['subject']) ?></td>
                 <td><?= Helpers::e($log['recipients'] ?? '-') ?></td>
                 <td>
