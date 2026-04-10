@@ -34,8 +34,8 @@ require_once __DIR__ . '/../../core/Csrf.php';
           </div>
           <div class="col-12">
             <label class="form-label">Voucher de consumo</label>
-            <input type="file" class="form-control" name="voucher" accept=".jpg,.jpeg,.png,.webp,.pdf" required>
-            <div class="form-text">Formatos permitidos: JPG, PNG, WEBP o PDF.</div>
+            <input type="file" class="form-control" name="voucher" accept="image/*,.pdf,.heic,.heif" required>
+            <div class="form-text">Formatos permitidos: JPG, PNG, WEBP, HEIC, HEIF o PDF.</div>
           </div>
         </div>
 

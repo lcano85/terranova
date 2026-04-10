@@ -7,11 +7,29 @@ require_once __DIR__ . '/../models/LeadDinnerStatus.php';
 
 class LeadDinnerController extends Controller
 {
+  private function uploadErrorMessage(int $code): string
+  {
+    return match ($code) {
+      UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'El voucher supera el tamano maximo permitido por el servidor.',
+      UPLOAD_ERR_PARTIAL => 'El voucher no termino de subirse. Intenta nuevamente.',
+      UPLOAD_ERR_NO_FILE => 'Debes adjuntar el voucher de consumo.',
+      UPLOAD_ERR_NO_TMP_DIR => 'El servidor no tiene carpeta temporal para procesar el voucher.',
+      UPLOAD_ERR_CANT_WRITE => 'No se pudo escribir el voucher en el servidor.',
+      UPLOAD_ERR_EXTENSION => 'La subida del voucher fue bloqueada por una extension del servidor.',
+      default => 'No se pudo procesar el voucher adjunto.',
+    };
+  }
+
   private function uploadVoucher(): array
   {
     $file = $_FILES['voucher'] ?? null;
-    if (!$file || !is_array($file) || (int)($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+    if (!$file || !is_array($file)) {
       throw new RuntimeException('Debes adjuntar el voucher de consumo.');
+    }
+
+    $uploadError = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if ($uploadError !== UPLOAD_ERR_OK) {
+      throw new RuntimeException($this->uploadErrorMessage($uploadError));
     }
 
     $tmp = (string)($file['tmp_name'] ?? '');
@@ -21,9 +39,42 @@ class LeadDinnerController extends Controller
 
     $originalName = (string)($file['name'] ?? 'voucher');
     $ext = strtolower((string)pathinfo($originalName, PATHINFO_EXTENSION));
-    $allowed = ['jpg', 'jpeg', 'png', 'webp', 'pdf'];
-    if (!in_array($ext, $allowed, true)) {
-      throw new RuntimeException('El voucher debe ser JPG, PNG, WEBP o PDF.');
+    $mime = strtolower((string)($file['type'] ?? ''));
+    if (function_exists('finfo_open')) {
+      $finfo = finfo_open(FILEINFO_MIME_TYPE);
+      if ($finfo !== false) {
+        $detectedMime = finfo_file($finfo, $tmp);
+        finfo_close($finfo);
+        if (is_string($detectedMime) && $detectedMime !== '') {
+          $mime = strtolower($detectedMime);
+        }
+      }
+    }
+
+    $allowedByExtension = [
+      'jpg' => 'jpg',
+      'jpeg' => 'jpg',
+      'png' => 'png',
+      'webp' => 'webp',
+      'pdf' => 'pdf',
+      'heic' => 'heic',
+      'heif' => 'heif',
+    ];
+    $allowedByMime = [
+      'image/jpeg' => 'jpg',
+      'image/jpg' => 'jpg',
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      'application/pdf' => 'pdf',
+      'image/heic' => 'heic',
+      'image/heif' => 'heif',
+      'image/heic-sequence' => 'heic',
+      'image/heif-sequence' => 'heif',
+    ];
+
+    $normalizedExt = $allowedByExtension[$ext] ?? ($allowedByMime[$mime] ?? '');
+    if ($normalizedExt === '') {
+      throw new RuntimeException('El voucher debe ser JPG, PNG, WEBP, HEIC, HEIF o PDF.');
     }
 
     $dir = dirname(__DIR__, 2) . '/uploads/leads-cena';
@@ -31,7 +82,7 @@ class LeadDinnerController extends Controller
       throw new RuntimeException('No se pudo crear la carpeta para vouchers.');
     }
 
-    $fileName = 'voucher_' . date('Ymd_His') . '_' . bin2hex(random_bytes(6)) . '.' . $ext;
+    $fileName = 'voucher_' . date('Ymd_His') . '_' . bin2hex(random_bytes(6)) . '.' . $normalizedExt;
     $target = $dir . '/' . $fileName;
 
     if (!move_uploaded_file($tmp, $target)) {

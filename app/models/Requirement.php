@@ -3,6 +3,33 @@ require_once __DIR__ . '/../core/Database.php';
 
 class Requirement
 {
+  private static bool $schemaEnsured = false;
+
+  public static function ensureSchema(): void
+  {
+    if (self::$schemaEnsured) {
+      return;
+    }
+
+    $pdo = Database::conn();
+    $columns = $pdo->query("SHOW COLUMNS FROM requirements")->fetchAll();
+    $existing = [];
+    foreach ($columns as $column) {
+      $existing[$column['Field']] = true;
+    }
+
+    if (empty($existing['status'])) {
+      $pdo->exec("ALTER TABLE requirements ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'submitted' AFTER week_end");
+    }
+
+    if (empty($existing['submitted_at'])) {
+      $pdo->exec("ALTER TABLE requirements ADD COLUMN submitted_at DATETIME NULL AFTER status");
+      $pdo->exec("UPDATE requirements SET submitted_at = COALESCE(submitted_at, created_at, NOW()) WHERE status = 'submitted'");
+    }
+
+    self::$schemaEnsured = true;
+  }
+
   public static function normalizeWeekStart(?string $weekStart = null): string
   {
     $week = self::weekRangeForDate($weekStart);
@@ -44,19 +71,22 @@ class Requirement
     return $weekday === 4 || $weekday === 6;
   }
 
-  public static function create(int $userId, int $purchaseAreaId, string $requiredDate, array $items): int
+  public static function create(int $userId, int $purchaseAreaId, string $requiredDate, array $items, string $status = 'submitted'): int
   {
+    self::ensureSchema();
     $pdo = Database::conn();
     $week = self::weekRangeForDate($requiredDate);
+    $status = $status === 'draft' ? 'draft' : 'submitted';
+    $submittedAt = $status === 'submitted' ? date('Y-m-d H:i:s') : null;
 
     $pdo->beginTransaction();
 
     try {
       $st = $pdo->prepare("
-        INSERT INTO requirements (user_id, purchase_area_id, required_date, week_start, week_end)
-        VALUES (?,?,?,?,?)
+        INSERT INTO requirements (user_id, purchase_area_id, required_date, week_start, week_end, status, submitted_at)
+        VALUES (?,?,?,?,?,?,?)
       ");
-      $st->execute([$userId, $purchaseAreaId, $requiredDate, $week['from'], $week['to']]);
+      $st->execute([$userId, $purchaseAreaId, $requiredDate, $week['from'], $week['to'], $status, $submittedAt]);
       $requirementId = (int)$pdo->lastInsertId();
 
       $itemSt = $pdo->prepare("
@@ -80,11 +110,14 @@ class Requirement
 
   public static function forWorkerWeek(int $userId, string $weekStart): array
   {
+    self::ensureSchema();
     $st = Database::conn()->prepare("
       SELECT
         r.id AS requirement_id,
         r.required_date,
         r.week_start,
+        r.status,
+        r.submitted_at,
         pa.name AS purchase_area_name,
         ri.id AS item_id,
         ri.item_name,
@@ -102,11 +135,14 @@ class Requirement
 
   public static function forAdminWeek(string $weekStart): array
   {
+    self::ensureSchema();
     $st = Database::conn()->prepare("
       SELECT
         r.id AS requirement_id,
         r.required_date,
         r.week_start,
+        r.status,
+        r.submitted_at,
         r.user_id,
         u.first_name,
         u.last_name,
@@ -128,6 +164,7 @@ class Requirement
 
   public static function setPurchased(int $itemId, int $isPurchased): void
   {
+    self::ensureSchema();
     $purchasedAt = $isPurchased === 1 ? date('Y-m-d H:i:s') : null;
     $st = Database::conn()->prepare("
       UPDATE requirement_items
@@ -137,8 +174,92 @@ class Requirement
     $st->execute([$isPurchased, $purchasedAt, $itemId]);
   }
 
+  public static function deleteItem(int $itemId, ?int $workerId = null, bool $draftOnly = false): void
+  {
+    self::ensureSchema();
+    $pdo = Database::conn();
+
+    $where = "ri.id=?";
+    $params = [$itemId];
+
+    if ($workerId !== null) {
+      $where .= " AND r.user_id=?";
+      $params[] = $workerId;
+    }
+
+    if ($draftOnly) {
+      $where .= " AND r.status='draft'";
+    }
+
+    $st = $pdo->prepare("
+      SELECT ri.requirement_id
+      FROM requirement_items ri
+      JOIN requirements r ON r.id = ri.requirement_id
+      WHERE {$where}
+      LIMIT 1
+    ");
+    $st->execute($params);
+    $row = $st->fetch();
+    if (!$row) {
+      throw new RuntimeException('No se pudo eliminar el item solicitado.');
+    }
+
+    $pdo->beginTransaction();
+    try {
+      $delete = $pdo->prepare("DELETE FROM requirement_items WHERE id=?");
+      $delete->execute([$itemId]);
+
+      $count = $pdo->prepare("SELECT COUNT(*) FROM requirement_items WHERE requirement_id=?");
+      $count->execute([(int)$row['requirement_id']]);
+      if ((int)$count->fetchColumn() === 0) {
+        $deleteRequirement = $pdo->prepare("DELETE FROM requirements WHERE id=?");
+        $deleteRequirement->execute([(int)$row['requirement_id']]);
+      }
+
+      $pdo->commit();
+    } catch (Throwable $e) {
+      if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+      }
+      throw $e;
+    }
+  }
+
+  public static function submitWorkerWeek(int $userId, string $weekStart): ?int
+  {
+    self::ensureSchema();
+    $pdo = Database::conn();
+
+    $find = $pdo->prepare("
+      SELECT id
+      FROM requirements
+      WHERE user_id=?
+        AND week_start=?
+        AND status='draft'
+      ORDER BY id ASC
+      LIMIT 1
+    ");
+    $find->execute([$userId, $weekStart]);
+    $firstId = $find->fetchColumn();
+    if (!$firstId) {
+      return null;
+    }
+
+    $update = $pdo->prepare("
+      UPDATE requirements
+      SET status='submitted', submitted_at=NOW()
+      WHERE user_id=?
+        AND week_start=?
+        AND status='draft'
+    ");
+    $update->execute([$userId, $weekStart]);
+
+    return (int)$firstId;
+  }
+
   public static function detailForNotification(int $requirementId): ?array
   {
+    self::ensureSchema();
     $st = Database::conn()->prepare("
       SELECT
         r.id AS requirement_id,
@@ -181,6 +302,7 @@ class Requirement
 
   public static function weeklyDetailForNotification(int $userId, string $weekStart): array
   {
+    self::ensureSchema();
     $st = Database::conn()->prepare("
       SELECT
         r.id AS requirement_id,
@@ -199,6 +321,7 @@ class Requirement
       JOIN requirement_items ri ON ri.requirement_id = r.id
       WHERE r.user_id=?
         AND r.week_start=?
+        AND r.status='submitted'
       ORDER BY r.required_date ASC, pa.name ASC, ri.id ASC
     ");
     $st->execute([$userId, $weekStart]);
