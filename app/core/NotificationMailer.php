@@ -10,11 +10,37 @@ class NotificationMailer
 {
   private static array $debugLog = [];
 
+  public static function configPath(): string
+  {
+    return dirname(__DIR__) . '/config/mail.php';
+  }
+
+  public static function loadConfig(): array
+  {
+    $path = self::configPath();
+    if (!is_file($path)) {
+      throw new RuntimeException('No existe el archivo de configuracion SMTP en app/config/mail.php');
+    }
+
+    $cfg = require $path;
+    if (!is_array($cfg)) {
+      throw new RuntimeException('La configuracion SMTP de app/config/mail.php no es valida.');
+    }
+
+    return $cfg;
+  }
+
+  public static function adminRecipients(): array
+  {
+    $cfg = self::loadConfig();
+    return array_values(array_filter(array_map('trim', $cfg['admin_recipients'] ?? [])));
+  }
+
   public static function send(array $to, string $subject, string $htmlBody, string $textBody = ''): void
   {
     self::$debugLog = [];
 
-    $cfg = require __DIR__ . '/../config/mail.php';
+    $cfg = self::loadConfig();
     if (empty($cfg['enabled'])) {
       throw new RuntimeException('El envio SMTP esta deshabilitado en app/config/mail.php');
     }

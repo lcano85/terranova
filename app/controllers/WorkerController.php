@@ -16,8 +16,7 @@ require_once __DIR__ . '/../core/NotificationMailer.php';
 class WorkerController extends Controller {
   private function notifyAdminsAboutRequirement(int $requirementId): void
   {
-    $cfg = require __DIR__ . '/../config/mail.php';
-    $recipients = array_values(array_filter(array_map('trim', $cfg['admin_recipients'] ?? [])));
+    $recipients = NotificationMailer::adminRecipients();
     if (empty($recipients)) {
       throw new RuntimeException('No hay correos de administracion configurados en app/config/mail.php');
     }
