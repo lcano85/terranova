@@ -353,6 +353,11 @@ class AdminController extends Controller
           );
           $msg = ['type' => 'success', 'text' => 'Estado de compra actualizado'];
         }
+
+        if ($action === 'delete_item') {
+          Requirement::deleteItem((int)($_POST['item_id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Item eliminado del requerimiento'];
+        }
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
@@ -378,6 +383,7 @@ class AdminController extends Controller
         $grouped[$workerKey]['areas'][$areaKey] = [
           'required_date' => $row['required_date'],
           'purchase_area_name' => $row['purchase_area_name'],
+          'status' => $row['status'] ?? 'submitted',
           'items' => []
         ];
       }

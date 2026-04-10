@@ -54,8 +54,9 @@ require_once __DIR__ . '/../../core/Csrf.php';
             <input class="form-control" name="items[]" placeholder="Ej: 1 sol de zapallo">
           </div>
 
-          <div class="mt-3">
-            <button class="btn btn-primary">Guardar</button>
+          <div class="mt-3 d-flex gap-2 flex-wrap">
+            <button class="btn btn-outline-primary" name="action" value="save_draft">Guardar</button>
+            <button class="btn btn-primary" name="action" value="send">Enviar</button>
           </div>
         </form>
       </div>
@@ -63,7 +64,19 @@ require_once __DIR__ . '/../../core/Csrf.php';
 
     <div class="card shadow-sm">
       <div class="card-body">
-        <h5 class="mb-3">Lista registrada esta semana</h5>
+        <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+          <div>
+            <h5 class="mb-0">Lista registrada esta semana</h5>
+            <div class="text-muted small">Los borradores se pueden editar antes de enviar.</div>
+          </div>
+          <?php if (!empty(array_filter($grouped, static fn($group) => ($group['status'] ?? '') === 'draft'))): ?>
+            <form method="POST">
+              <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+              <input type="hidden" name="action" value="submit_saved">
+              <button class="btn btn-success">Enviar requerimientos guardados</button>
+            </form>
+          <?php endif; ?>
+        </div>
 
         <?php if (empty($grouped)): ?>
           <div class="text-muted">Aun no tienes requerimientos registrados esta semana.</div>
@@ -72,19 +85,34 @@ require_once __DIR__ . '/../../core/Csrf.php';
         <?php foreach ($grouped as $group): ?>
           <div class="border rounded p-3 mb-3">
             <div class="d-flex justify-content-between align-items-center mb-2">
-              <div class="fw-semibold text-capitalize"><?= Helpers::e($group['purchase_area_name']) ?></div>
+              <div>
+                <div class="fw-semibold text-capitalize"><?= Helpers::e($group['purchase_area_name']) ?></div>
+                <span class="badge text-bg-<?= ($group['status'] ?? '') === 'draft' ? 'warning' : 'success' ?>">
+                  <?= ($group['status'] ?? '') === 'draft' ? 'Borrador' : 'Enviado' ?>
+                </span>
+              </div>
               <div class="text-muted small">Fecha: <?= Helpers::e(date('d/m/Y', strtotime($group['required_date']))) ?></div>
             </div>
-            <ul class="mb-0">
+            <div class="d-flex flex-column gap-2">
               <?php foreach ($group['items'] as $item): ?>
-                <li>
-                  <?= Helpers::e($item['item_name']) ?>
-                  <?php if ((int)$item['is_purchased'] === 1): ?>
-                    <span class="badge text-bg-success">Comprado</span>
+                <div class="d-flex justify-content-between align-items-center gap-2 border rounded px-3 py-2">
+                  <div>
+                    <?= Helpers::e($item['item_name']) ?>
+                    <?php if ((int)$item['is_purchased'] === 1): ?>
+                      <span class="badge text-bg-success">Comprado</span>
+                    <?php endif; ?>
+                  </div>
+                  <?php if (($group['status'] ?? '') === 'draft'): ?>
+                    <form method="POST" onsubmit="return confirm('Eliminar este item del borrador?');">
+                      <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+                      <input type="hidden" name="action" value="delete_item">
+                      <input type="hidden" name="item_id" value="<?= (int)$item['item_id'] ?>">
+                      <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+                    </form>
                   <?php endif; ?>
-                </li>
+                </div>
               <?php endforeach; ?>
-            </ul>
+            </div>
           </div>
         <?php endforeach; ?>
       </div>

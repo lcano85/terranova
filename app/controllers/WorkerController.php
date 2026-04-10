@@ -292,8 +292,30 @@ class WorkerController extends Controller {
     $defaultDate = Requirement::nextAllowedDate();
     if (Helpers::isPost()) {
       Csrf::check();
+      $action = $_POST['action'] ?? 'save_draft';
 
       try {
+        if ($action === 'delete_item') {
+          Requirement::deleteItem((int)($_POST['item_id'] ?? 0), (int)$user['id'], true);
+          $msg = ['type' => 'success', 'text' => 'Item eliminado del borrador'];
+        }
+
+        if ($action === 'submit_saved') {
+          $week = Requirement::weekRangeForDate();
+          $requirementId = Requirement::submitWorkerWeek((int)$user['id'], $week['from']);
+          if ($requirementId === null) {
+            throw new RuntimeException('No tienes requerimientos guardados para enviar.');
+          }
+
+          try {
+            $this->notifyAdminsAboutRequirement($requirementId);
+            $msg = ['type' => 'success', 'text' => 'Requerimiento enviado y correo notificado al administrador'];
+          } catch (Throwable $mailError) {
+            $msg = ['type' => 'warning', 'text' => 'Requerimiento enviado, pero el correo no se envio. El administrador puede revisar el log.'];
+          }
+        }
+
+        if (in_array($action, ['save_draft', 'send'], true)) {
         $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
         $requiredDate = trim((string)($_POST['required_date'] ?? ''));
         $itemsRaw = $_POST['items'] ?? [];
@@ -316,14 +338,26 @@ class WorkerController extends Controller {
           throw new RuntimeException('Debes ingresar al menos un item');
         }
 
-        $requirementId = Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items);
-        try {
-          $this->notifyAdminsAboutRequirement($requirementId);
-          $msg = ['type' => 'success', 'text' => 'Requerimiento registrado y correo enviado al administrador'];
-        } catch (Throwable $mailError) {
-          $msg = ['type' => 'warning', 'text' => 'Requerimiento registrado, pero el correo no se envio: ' . $mailError->getMessage()];
-        }
+          if ($action === 'save_draft') {
+            Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items, 'draft');
+            $msg = ['type' => 'success', 'text' => 'Requerimiento guardado como borrador. Puedes continuar el registro despues.'];
+          }
+
+          if ($action === 'send') {
+            $requirementId = Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items, 'submitted');
+            $week = Requirement::weekRangeForDate($requiredDate);
+            Requirement::submitWorkerWeek((int)$user['id'], $week['from']);
+
+            try {
+              $this->notifyAdminsAboutRequirement($requirementId);
+              $msg = ['type' => 'success', 'text' => 'Requerimiento enviado y correo notificado al administrador'];
+            } catch (Throwable $mailError) {
+              $msg = ['type' => 'warning', 'text' => 'Requerimiento enviado, pero el correo no se envio. El administrador puede revisar el log.'];
+            }
+          }
+
         $defaultDate = $requiredDate;
+        }
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
@@ -339,6 +373,7 @@ class WorkerController extends Controller {
         $grouped[$key] = [
           'required_date' => $row['required_date'],
           'purchase_area_name' => $row['purchase_area_name'],
+          'status' => $row['status'] ?? 'submitted',
           'items' => []
         ];
       }
