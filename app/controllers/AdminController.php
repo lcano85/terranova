@@ -25,6 +25,22 @@ require_once __DIR__ . '/../core/XlsxReader.php';
 
 class AdminController extends Controller
 {
+  private function isJsonRequest(): bool
+  {
+    $accept = strtolower((string)($_SERVER['HTTP_ACCEPT'] ?? ''));
+    $requestedWith = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+
+    return str_contains($accept, 'application/json') || $requestedWith === 'xmlhttprequest';
+  }
+
+  private function jsonResponse(array $payload, int $statusCode = 200): void
+  {
+    http_response_code($statusCode);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+  }
+
   private function spreadsheetRowsToAssoc(array $rows): array
   {
     if (count($rows) < 2) {
@@ -340,6 +356,7 @@ class AdminController extends Controller
     Auth::requireRole('admin');
     $msg = null;
     $selectedWeekStart = Requirement::normalizeWeekStart($_GET['week_start'] ?? null);
+    $expectsJson = $this->isJsonRequest();
 
     if (Helpers::isPost()) {
       Csrf::check();
@@ -347,10 +364,25 @@ class AdminController extends Controller
 
       try {
         if ($action === 'toggle_item') {
+          $isPurchased = isset($_POST['is_purchased']) ? 1 : 0;
           Requirement::setPurchased(
             (int)($_POST['item_id'] ?? 0),
-            isset($_POST['is_purchased']) ? 1 : 0
+            $isPurchased
           );
+
+          if ($expectsJson) {
+            $this->jsonResponse([
+              'ok' => true,
+              'message' => 'Estado de compra actualizado',
+              'item' => [
+                'id' => (int)($_POST['item_id'] ?? 0),
+                'is_purchased' => $isPurchased,
+                'status_text' => $isPurchased === 1 ? 'Comprado' : 'Pendiente',
+                'status_class' => $isPurchased === 1 ? 'success' : 'secondary',
+              ],
+            ]);
+          }
+
           $msg = ['type' => 'success', 'text' => 'Estado de compra actualizado'];
         }
 
@@ -359,6 +391,13 @@ class AdminController extends Controller
           $msg = ['type' => 'warning', 'text' => 'Item eliminado del requerimiento'];
         }
       } catch (Throwable $e) {
+        if ($expectsJson) {
+          $this->jsonResponse([
+            'ok' => false,
+            'message' => 'Error: ' . $e->getMessage(),
+          ], 422);
+        }
+
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
     }

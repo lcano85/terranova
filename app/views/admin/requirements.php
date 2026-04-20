@@ -109,7 +109,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
                 <?php foreach ($area['items'] as $item): ?>
                   <div class="border rounded px-3 py-2">
                     <div class="d-flex align-items-center gap-2">
-                      <form method="POST" class="form-check d-flex align-items-center gap-2 flex-grow-1 mb-0">
+                      <form method="POST" action="<?= Helpers::e(BASE_URL . '/admin/requirements') ?>" class="js-requirement-toggle-form form-check d-flex align-items-center gap-2 flex-grow-1 mb-0">
                         <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
                         <input type="hidden" name="action" value="toggle_item">
                         <input type="hidden" name="item_id" value="<?= (int)$item['item_id'] ?>">
@@ -118,14 +118,17 @@ require_once __DIR__ . '/../../core/Csrf.php';
                                type="checkbox"
                                name="is_purchased"
                                value="1"
-                               onchange="this.form.submit()"
+                               data-role="purchase-toggle"
                                <?= (int)$item['is_purchased'] === 1 ? 'checked' : '' ?>>
                         <label class="form-check-label flex-grow-1">
                           <?= Helpers::e($item['item_name']) ?>
                         </label>
-                        <span class="badge text-bg-<?= (int)$item['is_purchased'] === 1 ? 'success' : 'secondary' ?>">
+                        <span class="js-purchase-status badge text-bg-<?= (int)$item['is_purchased'] === 1 ? 'success' : 'secondary' ?>">
                           <?= (int)$item['is_purchased'] === 1 ? 'Comprado' : 'Pendiente' ?>
                         </span>
+                        <noscript>
+                          <button class="btn btn-sm btn-outline-primary" type="submit">Guardar</button>
+                        </noscript>
                       </form>
 
                       <form method="POST" class="mb-0" onsubmit="return confirm('Eliminar este item del requerimiento?');">
@@ -145,4 +148,66 @@ require_once __DIR__ . '/../../core/Csrf.php';
     <?php endforeach; ?>
   </div>
 </div>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const forms = document.querySelectorAll('.js-requirement-toggle-form');
+
+    forms.forEach(function(form) {
+      const checkbox = form.querySelector('[data-role="purchase-toggle"]');
+      const statusBadge = form.querySelector('.js-purchase-status');
+      if (!checkbox || !statusBadge) {
+        return;
+      }
+
+      checkbox.addEventListener('change', async function() {
+        const previousChecked = !checkbox.checked;
+        const formData = new FormData(form);
+
+        if (!checkbox.checked) {
+          formData.delete('is_purchased');
+        }
+
+        checkbox.disabled = true;
+        form.classList.add('opacity-50');
+
+        try {
+          const endpoint = form.getAttribute('action') || '<?= Helpers::e(BASE_URL . '/admin/requirements') ?>';
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
+            }
+          });
+
+          const rawResponse = await response.text();
+          let result = null;
+
+          try {
+            result = JSON.parse(rawResponse);
+          } catch (parseError) {
+            throw new Error(rawResponse || 'El servidor devolvio una respuesta invalida.');
+          }
+
+          if (!response.ok || !result.ok) {
+            throw new Error(result.message || 'No se pudo actualizar el item.');
+          }
+
+          const purchased = Number(result.item?.is_purchased || 0) === 1;
+          checkbox.checked = purchased;
+          statusBadge.textContent = result.item?.status_text || (purchased ? 'Comprado' : 'Pendiente');
+          statusBadge.classList.remove('text-bg-success', 'text-bg-secondary');
+          statusBadge.classList.add(purchased ? 'text-bg-success' : 'text-bg-secondary');
+        } catch (error) {
+          checkbox.checked = previousChecked;
+          window.alert(error.message || 'No se pudo actualizar el item.');
+        } finally {
+          checkbox.disabled = false;
+          form.classList.remove('opacity-50');
+        }
+      });
+    });
+  });
+</script>
 <?php require __DIR__ . '/../layouts/footer.php'; ?>
