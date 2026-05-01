@@ -32,6 +32,7 @@ class App {
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/inventory' => ['AdminController', 'inventory'],
       '/admin/products' => ['AdminController', 'products'],
+      '/admin/recipes' => ['AdminController', 'recipes'],
       '/admin/sales' => ['AdminController', 'sales'],
       '/admin/leads-cena' => ['AdminController', 'leadDinnerEntries'],
       '/admin/leads-cena-statuses' => ['AdminController', 'leadDinnerStatuses'],
@@ -46,6 +47,7 @@ class App {
       '/worker/requirements' => ['WorkerController', 'requirements'],
       '/worker/activities' => ['WorkerController', 'activities'],
       '/worker/tasks' => ['WorkerController', 'tasks'],
+      '/worker/recipes' => ['WorkerController', 'recipes'],
       '/worker/profile' => ['WorkerController', 'profile'],
     ];
 

@@ -16,6 +16,7 @@ require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
 require_once __DIR__ . '/../models/ProductCategory.php';
 require_once __DIR__ . '/../models/Product.php';
+require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MonthlyProductSale.php';
 require_once __DIR__ . '/../models/SalesImportAudit.php';
 require_once __DIR__ . '/../models/MailNotificationLog.php';
@@ -827,6 +828,43 @@ class AdminController extends Controller
     $rows = Product::byCategory($categoryId > 0 ? $categoryId : null, $search);
 
     $this->view('admin/products', compact('msg', 'summary', 'categories', 'grouped', 'rows', 'categoryId', 'search'));
+  }
+
+  public function recipes(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'update') {
+          Recipe::updateByAdmin(
+            (int)($_POST['id'] ?? 0),
+            (string)($_POST['area_type'] ?? ''),
+            (string)($_POST['title'] ?? ''),
+            (array)($_POST['ingredients'] ?? []),
+            (string)($_POST['preparation'] ?? ''),
+            isset($_POST['approved']) ? 'approved' : 'pending'
+          );
+          $msg = ['type' => 'success', 'text' => 'Receta actualizada'];
+        }
+
+        if ($action === 'delete') {
+          Recipe::deleteByAdmin((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Receta eliminada'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $areaType = $_GET['area_type'] ?? '';
+    $status = $_GET['status'] ?? '';
+    $recipes = Recipe::allForAdmin($areaType, $status);
+    $this->view('admin/recipes', compact('msg', 'recipes', 'areaType', 'status'));
   }
 
   public function sales(): void

@@ -10,6 +10,7 @@ require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/Requirement.php';
 require_once __DIR__ . '/../models/Activity.php';
 require_once __DIR__ . '/../models/Task.php';
+require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MailNotificationLog.php';
 require_once __DIR__ . '/../core/NotificationMailer.php';
 
@@ -459,6 +460,41 @@ class WorkerController extends Controller {
     $user = User::findWithDetails((int)$base['id']) ?: $base;
     $board = Task::weeklyBoard();
     $this->view('worker/tasks', compact('user', 'board'));
+  }
+
+  public function recipes(): void
+  {
+    Auth::requireRole('worker');
+
+    $base = Auth::user();
+    $user = User::findWithDetails((int)$base['id']) ?: $base;
+    $areaType = Recipe::areaTypeFromName($user['area_name'] ?? null);
+
+    if ($areaType === null) {
+      http_response_code(403);
+      exit('403 - Modulo disponible solo para Cocina y Barra');
+    }
+
+    $msg = null;
+    if (Helpers::isPost()) {
+      Csrf::check();
+
+      try {
+        Recipe::create(
+          (int)$user['id'],
+          $areaType,
+          (string)($_POST['title'] ?? ''),
+          (array)($_POST['ingredients'] ?? []),
+          (string)($_POST['preparation'] ?? '')
+        );
+        $msg = ['type' => 'success', 'text' => 'Receta registrada. Quedara visible cuando el administrador la apruebe.'];
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $recipes = Recipe::approvedByArea($areaType);
+    $this->view('worker/recipes', compact('user', 'areaType', 'recipes', 'msg'));
   }
 
   public function inventory(): void {

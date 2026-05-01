@@ -1,5 +1,10 @@
 <?php
+require_once __DIR__ . '/../../models/User.php';
+require_once __DIR__ . '/../../models/Recipe.php';
+
 $path = rtrim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/') ?: '/';
+$sidebarBaseUser = Auth::user();
+$sidebarUser = $sidebarBaseUser ? (User::findWithDetails((int)$sidebarBaseUser['id']) ?: $sidebarBaseUser) : null;
 $workerLinks = [
   ['/worker', 'Dashboard'],
   ['/worker/attendance', 'Mi asistencia'],
@@ -7,8 +12,13 @@ $workerLinks = [
   ['/worker/requirements', 'Requerimientos'],
   ['/worker/activities', 'Actividades'],
   ['/worker/tasks', 'Tareas'],
-  ['/worker/profile', 'Mi perfil'],
 ];
+
+if (Recipe::canWorkerUse($sidebarUser)) {
+  $workerLinks[] = ['/worker/recipes', 'Recetario'];
+}
+
+$workerLinks[] = ['/worker/profile', 'Mi perfil'];
 ?>
 <div class="mobile-topbar border-bottom px-3 py-2">
   <div class="d-flex align-items-center justify-content-between gap-3">
