@@ -37,8 +37,8 @@ require_once __DIR__ . '/../../core/Csrf.php';
             </div>
             <div class="col-md-4">
               <label class="form-label">Fecha</label>
-              <input type="date" class="form-control" name="required_date" value="<?= Helpers::e($defaultDate) ?>" required>
-              <div class="form-text">Solo se permiten jueves o sabado.</div>
+              <input type="date" class="form-control" name="required_date" value="<?= Helpers::e($defaultDate) ?>" min="<?= Helpers::e(date('Y-m-d')) ?>" required>
+              <div class="form-text">Puedes seleccionar hoy o cualquier fecha futura.</div>
             </div>
           </div>
 

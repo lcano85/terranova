@@ -15,6 +15,9 @@ class AuthController extends Controller
     }
 
     $error = null;
+    if (isset($_GET['inactive'])) {
+      $error = 'No existe ese trabajador';
+    }
 
     if (Helpers::isPost()) {
       Csrf::check();
@@ -25,7 +28,13 @@ class AuthController extends Controller
 
       $u = User::findByDoc($docType, $docNumber);
 
-      if (!$u || !password_verify($pass, $u['password_hash'])) {
+      if (!$u || (($u['role'] ?? '') === 'worker' && (int)($u['is_active'] ?? 1) !== 1)) {
+        $error = 'No existe ese trabajador';
+        $this->view('auth/login', compact('error'));
+        return;
+      }
+
+      if (!password_verify($pass, $u['password_hash'])) {
         $error = "Credenciales inválidas";
         $this->view('auth/login', compact('error'));
         return; // ✅ return sin valor

@@ -28,7 +28,7 @@ class WorkerController extends Controller {
 
     $weeklyDetail = Requirement::weeklyDetailForNotification((int)$detail['user_id'], (string)$detail['week_start']);
     if (empty($weeklyDetail)) {
-      throw new RuntimeException('No se pudo obtener el bloque semanal del requerimiento para el correo.');
+      throw new RuntimeException('No hay productos pendientes para notificar por correo.');
     }
 
     $subject = 'Requerimientos semanales registrados - ' . $weeklyDetail['worker_name'];
@@ -333,7 +333,7 @@ class WorkerController extends Controller {
             throw new RuntimeException('Debes seleccionar un area de compra');
           }
           if ($requiredDate === '' || !Requirement::isAllowedDate($requiredDate)) {
-            throw new RuntimeException('La fecha solo puede ser jueves o sabado');
+            throw new RuntimeException('La fecha debe ser hoy o una fecha futura');
           }
           if (empty($items)) {
             throw new RuntimeException('Debes ingresar al menos un item');

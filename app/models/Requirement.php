@@ -62,22 +62,19 @@ class Requirement
   public static function nextAllowedDate(?string $baseDate = null): string
   {
     $date = $baseDate ? new DateTime($baseDate) : new DateTime();
-    for ($i = 0; $i < 14; $i++) {
-      $weekday = (int)$date->format('N');
-      if ($weekday === 4 || $weekday === 6) {
-        return $date->format('Y-m-d');
-      }
-      $date->modify('+1 day');
-    }
-
     return $date->format('Y-m-d');
   }
 
   public static function isAllowedDate(string $date): bool
   {
-    $dt = new DateTime($date);
-    $weekday = (int)$dt->format('N');
-    return $weekday === 4 || $weekday === 6;
+    $dt = DateTime::createFromFormat('Y-m-d', $date);
+    if (!$dt || $dt->format('Y-m-d') !== $date) {
+      return false;
+    }
+
+    $today = new DateTime('today');
+    $dt->setTime(0, 0, 0);
+    return $dt >= $today;
   }
 
   public static function create(int $userId, int $purchaseAreaId, string $requiredDate, array $items, string $status = 'submitted'): int
@@ -396,6 +393,7 @@ class Requirement
       WHERE r.user_id=?
         AND r.week_start=?
         AND r.status='submitted'
+        AND ri.is_purchased=0
       ORDER BY r.required_date ASC, pa.name ASC, ri.id ASC
     ");
     $st->execute([$userId, $weekStart]);

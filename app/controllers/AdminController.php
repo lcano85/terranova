@@ -212,6 +212,7 @@ class AdminController extends Controller
             'last_name' => trim($_POST['last_name'] ?? ''),
             'shift_id' => (int)($_POST['shift_id'] ?? 0),
             'area_id' => (int)($_POST['area_id'] ?? 0),
+            'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'password' => $_POST['password'] ?? '123456'
           ]);
           // Pago diario (opcional)
@@ -229,6 +230,7 @@ class AdminController extends Controller
             'last_name' => trim($_POST['last_name'] ?? ''),
             'shift_id' => (int)($_POST['shift_id'] ?? 0),
             'area_id' => (int)($_POST['area_id'] ?? 0),
+            'is_active' => isset($_POST['is_active']) ? 1 : 0,
             'password' => $_POST['password'] ?? ''
           ]);
           $dailyRate = isset($_POST['daily_rate']) && $_POST['daily_rate'] !== '' ? (float)$_POST['daily_rate'] : null;
