@@ -5,6 +5,15 @@ class Requirement
 {
   private static bool $schemaEnsured = false;
 
+  private static function normalizeItemName(string $itemName): string
+  {
+    $clean = preg_replace('/\s+/u', ' ', trim($itemName)) ?? trim($itemName);
+    if (function_exists('mb_strtolower')) {
+      return mb_strtolower($clean, 'UTF-8');
+    }
+    return strtolower($clean);
+  }
+
   public static function ensureSchema(): void
   {
     if (self::$schemaEnsured) {
@@ -53,22 +62,19 @@ class Requirement
   public static function nextAllowedDate(?string $baseDate = null): string
   {
     $date = $baseDate ? new DateTime($baseDate) : new DateTime();
-    for ($i = 0; $i < 14; $i++) {
-      $weekday = (int)$date->format('N');
-      if ($weekday === 4 || $weekday === 6) {
-        return $date->format('Y-m-d');
-      }
-      $date->modify('+1 day');
-    }
-
     return $date->format('Y-m-d');
   }
 
   public static function isAllowedDate(string $date): bool
   {
-    $dt = new DateTime($date);
-    $weekday = (int)$dt->format('N');
-    return $weekday === 4 || $weekday === 6;
+    $dt = DateTime::createFromFormat('Y-m-d', $date);
+    if (!$dt || $dt->format('Y-m-d') !== $date) {
+      return false;
+    }
+
+    $today = new DateTime('today');
+    $dt->setTime(0, 0, 0);
+    return $dt >= $today;
   }
 
   public static function create(int $userId, int $purchaseAreaId, string $requiredDate, array $items, string $status = 'submitted'): int
@@ -172,6 +178,71 @@ class Requirement
       WHERE id=?
     ");
     $st->execute([$isPurchased, $purchasedAt, $itemId]);
+  }
+
+  public static function sanitizeItems(array $items): array
+  {
+    $uniqueItems = [];
+    $duplicates = [];
+    $seen = [];
+
+    foreach ($items as $item) {
+      $clean = preg_replace('/\s+/u', ' ', trim((string)$item)) ?? trim((string)$item);
+      if ($clean === '') {
+        continue;
+      }
+
+      $normalized = self::normalizeItemName($clean);
+      if (isset($seen[$normalized])) {
+        $duplicates[] = $clean;
+        continue;
+      }
+
+      $seen[$normalized] = true;
+      $uniqueItems[] = $clean;
+    }
+
+    return [
+      'items' => $uniqueItems,
+      'duplicates' => $duplicates,
+    ];
+  }
+
+  public static function duplicateItemsForWorkerSlot(int $userId, int $purchaseAreaId, string $requiredDate, array $items): array
+  {
+    self::ensureSchema();
+    if (empty($items)) {
+      return [];
+    }
+
+    $week = self::weekRangeForDate($requiredDate);
+    $st = Database::conn()->prepare("
+      SELECT ri.item_name
+      FROM requirements r
+      JOIN requirement_items ri ON ri.requirement_id = r.id
+      WHERE r.user_id=?
+        AND r.purchase_area_id=?
+        AND r.required_date=?
+        AND r.week_start=?
+    ");
+    $st->execute([$userId, $purchaseAreaId, $requiredDate, $week['from']]);
+    $existingRows = $st->fetchAll();
+
+    $existingMap = [];
+    foreach ($existingRows as $row) {
+      $itemName = (string)($row['item_name'] ?? '');
+      $existingMap[self::normalizeItemName($itemName)] = $itemName;
+    }
+
+    $duplicates = [];
+    foreach ($items as $item) {
+      $normalized = self::normalizeItemName((string)$item);
+      if (isset($existingMap[$normalized])) {
+        $duplicates[] = $existingMap[$normalized];
+      }
+    }
+
+    return array_values(array_unique($duplicates));
   }
 
   public static function deleteItem(int $itemId, ?int $workerId = null, bool $draftOnly = false): void
@@ -322,6 +393,7 @@ class Requirement
       WHERE r.user_id=?
         AND r.week_start=?
         AND r.status='submitted'
+        AND ri.is_purchased=0
       ORDER BY r.required_date ASC, pa.name ASC, ri.id ASC
     ");
     $st->execute([$userId, $weekStart]);

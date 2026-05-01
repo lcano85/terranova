@@ -32,6 +32,7 @@ $workersPaginationMeta = $workersPagination['meta'];
               <th>Turno</th>
               <th>Área</th>
               <th>Pago diario</th>
+              <th>Estado</th>
               <th style="width:180px;">Acciones</th>
             </tr>
           </thead>
@@ -44,6 +45,11 @@ $workersPaginationMeta = $workersPagination['meta'];
                 <td><?= Helpers::e($w['shift_name'] ?? '-') ?></td>
                 <td><?= Helpers::e($w['area_name'] ?? '-') ?></td>
                 <td><?= isset($w['daily_rate']) ? 'S/ '.number_format((float)$w['daily_rate'],2) : '-' ?></td>
+                <td>
+                  <span class="badge text-bg-<?= (int)($w['is_active'] ?? 1) === 1 ? 'success' : 'secondary' ?>">
+                    <?= (int)($w['is_active'] ?? 1) === 1 ? 'Activo' : 'Inactivo' ?>
+                  </span>
+                </td>
                 <td class="d-flex gap-2">
                   <button class="btn btn-sm btn-outline-secondary"
                           data-bs-toggle="modal"
@@ -128,6 +134,14 @@ $workersPaginationMeta = $workersPagination['meta'];
 
 
                           <div class="col-md-12">
+                            <div class="form-check">
+                              <input class="form-check-input" type="checkbox" name="is_active" id="workerActive<?= (int)$w['id'] ?>" <?= (int)($w['is_active'] ?? 1) === 1 ? 'checked' : '' ?>>
+                              <label class="form-check-label" for="workerActive<?= (int)$w['id'] ?>">Activo</label>
+                            </div>
+                            <div class="text-muted small mt-1">Si lo desactivas, el trabajador no podra ingresar al sistema.</div>
+                          </div>
+
+                          <div class="col-md-12">
                             <label class="form-label">Nueva clave (opcional)</label>
                             <input type="password" class="form-control" name="password" placeholder="Dejar vacío para no cambiar">
                           </div>
@@ -144,7 +158,7 @@ $workersPaginationMeta = $workersPagination['meta'];
             <?php endforeach; ?>
 
             <?php if (empty($workers)): ?>
-              <tr><td colspan="7" class="text-muted">No hay trabajadores</td></tr>
+              <tr><td colspan="8" class="text-muted">No hay trabajadores</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
@@ -212,6 +226,14 @@ $workersPaginationMeta = $workersPagination['meta'];
                 <div class="col-md-12">
                   <label class="form-label">Pago diario (S/)</label>
                   <input type="number" step="0.01" min="0" class="form-control" name="daily_rate" placeholder="Ej: 60.00">
+                </div>
+
+
+                <div class="col-md-12">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="workerActiveNew" checked>
+                    <label class="form-check-label" for="workerActiveNew">Activo</label>
+                  </div>
                 </div>
 
 

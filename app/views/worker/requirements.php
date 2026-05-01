@@ -31,14 +31,14 @@ require_once __DIR__ . '/../../core/Csrf.php';
               <select class="form-select" name="purchase_area_id" required>
                 <option value="">Selecciona</option>
                 <?php foreach ($purchaseAreas as $area): ?>
-                  <option value="<?= (int)$area['id'] ?>"><?= Helpers::e($area['name']) ?></option>
+                  <option value="<?= (int)$area['id'] ?>" <?= (int)($selectedPurchaseAreaId ?? 0) === (int)$area['id'] ? 'selected' : '' ?>><?= Helpers::e($area['name']) ?></option>
                 <?php endforeach; ?>
               </select>
             </div>
             <div class="col-md-4">
               <label class="form-label">Fecha</label>
-              <input type="date" class="form-control" name="required_date" value="<?= Helpers::e($defaultDate) ?>" required>
-              <div class="form-text">Solo se permiten jueves o sabado.</div>
+              <input type="date" class="form-control" name="required_date" value="<?= Helpers::e($defaultDate) ?>" min="<?= Helpers::e(date('Y-m-d')) ?>" required>
+              <div class="form-text">Puedes seleccionar hoy o cualquier fecha futura.</div>
             </div>
           </div>
 
@@ -50,8 +50,10 @@ require_once __DIR__ . '/../../core/Csrf.php';
           </div>
 
           <div id="requirementItems" class="d-flex flex-column gap-2">
-            <input class="form-control" name="items[]" placeholder="Ej: 1 sol de culantro" required>
-            <input class="form-control" name="items[]" placeholder="Ej: 1 sol de zapallo">
+            <?php $renderItems = !empty($formItems ?? []) ? $formItems : ['', '']; ?>
+            <?php foreach ($renderItems as $index => $itemValue): ?>
+              <input class="form-control" name="items[]" value="<?= Helpers::e((string)$itemValue) ?>" placeholder="<?= $index === 0 ? 'Ej: 1 sol de culantro' : 'Ej: 1 sol de zapallo' ?>" <?= $index === 0 ? 'required' : '' ?>>
+            <?php endforeach; ?>
           </div>
 
           <div class="mt-3 d-flex gap-2 flex-wrap">

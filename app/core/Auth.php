@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../models/User.php';
+
 class Auth {
   public static function check(): bool {
     return isset($_SESSION['user']);
@@ -16,6 +18,7 @@ class Auth {
       'first_name' => $u['first_name'],
       'last_name' => $u['last_name'],
       'role' => $u['role'],
+      'is_active' => $u['is_active'] ?? 1,
       'shift_id' => $u['shift_id'] ?? null,
     ];
   }
@@ -28,6 +31,12 @@ class Auth {
   public static function requireLogin(): void {
     if (!self::check()) {
       Helpers::redirect('/login');
+    }
+
+    $u = self::user();
+    if (($u['role'] ?? '') === 'worker' && !User::isWorkerActive((int)$u['id'])) {
+      self::logout();
+      Helpers::redirect('/login?inactive=1');
     }
   }
 

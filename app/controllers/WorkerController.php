@@ -28,7 +28,7 @@ class WorkerController extends Controller {
 
     $weeklyDetail = Requirement::weeklyDetailForNotification((int)$detail['user_id'], (string)$detail['week_start']);
     if (empty($weeklyDetail)) {
-      throw new RuntimeException('No se pudo obtener el bloque semanal del requerimiento para el correo.');
+      throw new RuntimeException('No hay productos pendientes para notificar por correo.');
     }
 
     $subject = 'Requerimientos semanales registrados - ' . $weeklyDetail['worker_name'];
@@ -290,6 +290,9 @@ class WorkerController extends Controller {
     $msg = null;
     $purchaseAreas = PurchaseArea::active();
     $defaultDate = Requirement::nextAllowedDate();
+    $selectedPurchaseAreaId = 0;
+    $formItems = ['', ''];
+
     if (Helpers::isPost()) {
       Csrf::check();
       $action = $_POST['action'] ?? 'save_draft';
@@ -316,31 +319,44 @@ class WorkerController extends Controller {
         }
 
         if (in_array($action, ['save_draft', 'send'], true)) {
-        $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
-        $requiredDate = trim((string)($_POST['required_date'] ?? ''));
-        $itemsRaw = $_POST['items'] ?? [];
-        $items = [];
+          $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
+          $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+          $itemsRaw = $_POST['items'] ?? [];
+          $selectedPurchaseAreaId = $purchaseAreaId;
+          $defaultDate = $requiredDate !== '' ? $requiredDate : $defaultDate;
 
-        foreach ((array)$itemsRaw as $item) {
-          $item = trim((string)$item);
-          if ($item !== '') {
-            $items[] = $item;
+          $sanitized = Requirement::sanitizeItems((array)$itemsRaw);
+          $items = $sanitized['items'];
+          $formItems = !empty($items) ? $items : ['', ''];
+
+          if ($purchaseAreaId <= 0) {
+            throw new RuntimeException('Debes seleccionar un area de compra');
           }
-        }
+          if ($requiredDate === '' || !Requirement::isAllowedDate($requiredDate)) {
+            throw new RuntimeException('La fecha debe ser hoy o una fecha futura');
+          }
+          if (empty($items)) {
+            throw new RuntimeException('Debes ingresar al menos un item');
+          }
+          if (!empty($sanitized['duplicates'])) {
+            throw new RuntimeException('No puedes repetir items en el mismo registro: ' . implode(', ', $sanitized['duplicates']));
+          }
 
-        if ($purchaseAreaId <= 0) {
-          throw new RuntimeException('Debes seleccionar un area de compra');
-        }
-        if ($requiredDate === '' || !Requirement::isAllowedDate($requiredDate)) {
-          throw new RuntimeException('La fecha solo puede ser jueves o sabado');
-        }
-        if (empty($items)) {
-          throw new RuntimeException('Debes ingresar al menos un item');
-        }
+          $existingDuplicates = Requirement::duplicateItemsForWorkerSlot(
+            (int)$user['id'],
+            $purchaseAreaId,
+            $requiredDate,
+            $items
+          );
+          if (!empty($existingDuplicates)) {
+            throw new RuntimeException('Estos items ya fueron registrados para esa area y fecha: ' . implode(', ', $existingDuplicates));
+          }
 
           if ($action === 'save_draft') {
             Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items, 'draft');
             $msg = ['type' => 'success', 'text' => 'Requerimiento guardado como borrador. Puedes continuar el registro despues.'];
+            $selectedPurchaseAreaId = 0;
+            $formItems = ['', ''];
           }
 
           if ($action === 'send') {
@@ -354,9 +370,11 @@ class WorkerController extends Controller {
             } catch (Throwable $mailError) {
               $msg = ['type' => 'warning', 'text' => 'Requerimiento enviado, pero el correo no se envio. El administrador puede revisar el log.'];
             }
+            $selectedPurchaseAreaId = 0;
+            $formItems = ['', ''];
           }
 
-        $defaultDate = $requiredDate;
+          $defaultDate = $requiredDate;
         }
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
@@ -380,7 +398,7 @@ class WorkerController extends Controller {
       $grouped[$key]['items'][] = $row;
     }
 
-    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'defaultDate', 'msg', 'week', 'grouped'));
+    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'defaultDate', 'selectedPurchaseAreaId', 'formItems', 'msg', 'week', 'grouped'));
   }
 
   public function activities(): void {
