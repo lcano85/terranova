@@ -17,6 +17,7 @@ $adminLinks = [
   ['/admin/leads-cena-statuses', 'Estados Leads Cena'],
   ['/admin/promotions', 'Promociones'],
   ['/admin/attendance', 'Asistencia'],
+  ['/admin/payroll', 'Pagos'],
   ['/admin/profile', 'Mi perfil'],
 ];
 ?>

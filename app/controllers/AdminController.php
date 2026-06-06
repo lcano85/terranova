@@ -6,6 +6,7 @@ require_once __DIR__ . '/../core/Csrf.php';
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/Shift.php';
 require_once __DIR__ . '/../models/Attendance.php';
+require_once __DIR__ . '/../models/Payroll.php';
 require_once __DIR__ . '/../models/WorkArea.php';
 require_once __DIR__ . '/../models/PurchaseArea.php';
 require_once __DIR__ . '/../models/Requirement.php';
@@ -711,6 +712,97 @@ class AdminController extends Controller
     $rows = Attendance::filter($doc ?: null, $from ?: null, $to ?: null);
     $workers = User::allWorkers();
     $this->view('admin/attendance', compact('rows', 'doc', 'from', 'to', 'workers', 'msg'));
+  }
+
+  public function payroll(): void
+  {
+    Auth::requireRole('admin');
+    Payroll::ensureSchema();
+
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          $id = Payroll::create($_POST, (int)(Auth::user()['id'] ?? 0));
+          $msg = ['type' => 'success', 'text' => 'Pago generado #' . $id];
+        }
+
+        if ($action === 'update') {
+          $id = (int)($_POST['id'] ?? 0);
+          Payroll::update($id, $_POST);
+          $msg = ['type' => 'success', 'text' => 'Pago actualizado #' . $id];
+        }
+
+        if ($action === 'delete') {
+          Payroll::delete((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Pago eliminado'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $workers = User::allWorkers();
+    $selectedMonth = trim((string)($_GET['month'] ?? date('Y-m')));
+    if (!DateTime::createFromFormat('Y-m', $selectedMonth)) {
+      $selectedMonth = date('Y-m');
+    }
+
+    $preview = null;
+    $editingPayroll = null;
+    $editId = (int)($_GET['edit_id'] ?? 0);
+    if ($editId > 0) {
+      try {
+        $editingPayroll = Payroll::find($editId);
+        if (!$editingPayroll) {
+          throw new RuntimeException('El pago que intentas editar no existe.');
+        }
+
+        $preview = Payroll::calculatePreview([
+          'user_id' => (int)$editingPayroll['user_id'],
+          'payment_type' => $editingPayroll['payment_type'],
+          'period_month' => date('Y-m', strtotime($editingPayroll['period_month'])),
+          'period_part' => date('j', strtotime($editingPayroll['period_start'])) >= 16 ? 'second' : 'first',
+          'week_start' => $editingPayroll['period_start'],
+          'salary_basis' => $editingPayroll['salary_basis'],
+          'salary_amount' => $editingPayroll['salary_amount'],
+          'base_days' => $editingPayroll['base_days'],
+          'hours_per_day' => $editingPayroll['hours_per_day'],
+          'worked_days' => $editingPayroll['worked_days'],
+          'late_minutes' => $editingPayroll['late_minutes'],
+          'items' => [
+            'type' => array_column($editingPayroll['items'], 'item_type'),
+            'concept' => array_column($editingPayroll['items'], 'concept'),
+            'amount' => array_column($editingPayroll['items'], 'amount'),
+          ],
+        ]);
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    } elseif ((int)($_GET['user_id'] ?? 0) > 0) {
+      try {
+        $preview = Payroll::calculatePreview([
+          'user_id' => (int)($_GET['user_id'] ?? 0),
+          'payment_type' => $_GET['payment_type'] ?? 'biweekly',
+          'period_month' => $selectedMonth,
+          'period_part' => $_GET['period_part'] ?? 'first',
+          'week_start' => $_GET['week_start'] ?? '',
+          'salary_basis' => $_GET['salary_basis'] ?? '',
+          'salary_amount' => $_GET['salary_amount'] ?? '',
+          'base_days' => $_GET['base_days'] ?? '',
+          'hours_per_day' => $_GET['hours_per_day'] ?? '',
+        ]);
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $rows = Payroll::recent($selectedMonth);
+    $this->view('admin/payroll', compact('msg', 'workers', 'selectedMonth', 'preview', 'rows', 'editingPayroll'));
   }
 
   public function inventory(): void
