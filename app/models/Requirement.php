@@ -150,6 +150,7 @@ class Requirement
         r.status,
         r.submitted_at,
         r.user_id,
+        u.role AS user_role,
         u.first_name,
         u.last_name,
         pa.name AS purchase_area_name,
@@ -161,7 +162,7 @@ class Requirement
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
       WHERE r.week_start=?
-        AND u.role='worker'
+        AND u.role IN ('admin', 'worker')
       ORDER BY u.first_name ASC, u.last_name ASC, pa.name ASC, r.required_date ASC, ri.id ASC
     ");
     $st->execute([$weekStart]);

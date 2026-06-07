@@ -75,6 +75,19 @@ class User
     return Database::conn()->query($sql)->fetchAll();
   }
 
+  public static function allRequirementUsers(): array
+  {
+    self::ensureSchema();
+    $sql = "SELECT u.*, s.name AS shift_name, a.name AS area_name, pr.daily_rate
+            FROM users u
+            LEFT JOIN shifts s ON s.id = u.shift_id
+            LEFT JOIN work_areas a ON a.id = u.area_id
+            LEFT JOIN worker_pay_rates pr ON pr.user_id = u.id
+            WHERE u.role IN ('admin', 'worker')
+            ORDER BY FIELD(u.role, 'admin', 'worker'), u.first_name ASC, u.last_name ASC";
+    return Database::conn()->query($sql)->fetchAll();
+  }
+
   public static function countWorkers(): int
   {
     self::ensureSchema();

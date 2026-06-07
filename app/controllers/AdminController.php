@@ -394,6 +394,47 @@ class AdminController extends Controller
           Requirement::deleteItem((int)($_POST['item_id'] ?? 0));
           $msg = ['type' => 'warning', 'text' => 'Item eliminado del requerimiento'];
         }
+
+        if ($action === 'create_requirement') {
+          $workerId = (int)($_POST['user_id'] ?? 0);
+          $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
+          $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+          $itemsRaw = (array)($_POST['items'] ?? []);
+          $sanitized = Requirement::sanitizeItems($itemsRaw);
+          $items = $sanitized['items'];
+
+          $worker = User::findWithDetails($workerId);
+          if (!$worker || !in_array(($worker['role'] ?? ''), ['admin', 'worker'], true)) {
+            throw new RuntimeException('Debes seleccionar un trabajador o administrador valido.');
+          }
+          if ($purchaseAreaId <= 0) {
+            throw new RuntimeException('Debes seleccionar un area de compra.');
+          }
+          $date = DateTime::createFromFormat('Y-m-d', $requiredDate);
+          if (!$date || $date->format('Y-m-d') !== $requiredDate) {
+            throw new RuntimeException('Debes seleccionar una fecha valida.');
+          }
+          if (empty($items)) {
+            throw new RuntimeException('Debes ingresar al menos un producto.');
+          }
+          if (!empty($sanitized['duplicates'])) {
+            throw new RuntimeException('No puedes repetir productos en el mismo registro: ' . implode(', ', $sanitized['duplicates']));
+          }
+
+          $existingDuplicates = Requirement::duplicateItemsForWorkerSlot(
+            $workerId,
+            $purchaseAreaId,
+            $requiredDate,
+            $items
+          );
+          if (!empty($existingDuplicates)) {
+            throw new RuntimeException('Estos productos ya fueron registrados para esa area y fecha: ' . implode(', ', $existingDuplicates));
+          }
+
+          $requirementId = Requirement::create($workerId, $purchaseAreaId, $requiredDate, $items, 'submitted');
+          $selectedWeekStart = Requirement::normalizeWeekStart($requiredDate);
+          $msg = ['type' => 'success', 'text' => 'Requerimiento registrado #' . $requirementId];
+        }
       } catch (Throwable $e) {
         if ($expectsJson) {
           $this->jsonResponse([
@@ -409,6 +450,10 @@ class AdminController extends Controller
     $week = Requirement::weekRangeForDate($selectedWeekStart);
     $rows = Requirement::forAdminWeek($week['from']);
     $weekOptions = Requirement::weekOptions(8);
+    $workers = User::allRequirementUsers();
+    $purchaseAreas = PurchaseArea::active();
+    $today = date('Y-m-d');
+    $defaultRequirementDate = ($today >= $week['from'] && $today <= $week['to']) ? $today : $week['from'];
     $mailLogs = array_slice($this->requirementMailLogs(), 0, 10);
     $grouped = [];
 
@@ -417,6 +462,7 @@ class AdminController extends Controller
       if (!isset($grouped[$workerKey])) {
         $grouped[$workerKey] = [
           'worker_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+          'user_role' => $row['user_role'] ?? 'worker',
           'areas' => []
         ];
       }
@@ -434,7 +480,7 @@ class AdminController extends Controller
       $grouped[$workerKey]['areas'][$areaKey]['items'][] = $row;
     }
 
-    $this->view('admin/requirements', compact('msg', 'week', 'grouped', 'selectedWeekStart', 'weekOptions', 'mailLogs'));
+    $this->view('admin/requirements', compact('msg', 'week', 'grouped', 'selectedWeekStart', 'weekOptions', 'mailLogs', 'workers', 'purchaseAreas', 'defaultRequirementDate'));
   }
 
   private function requirementMailLogs(): array
