@@ -1,13 +1,45 @@
 <?php
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
+require_once __DIR__ . '/../../core/Csrf.php';
 require_once __DIR__ . '/../../core/Pagination.php';
+
+function inventoryActionLabel(string $action): string {
+  if ($action === 'create') return 'Creacion';
+  if ($action === 'update') return 'Actualizacion';
+  if ($action === 'activate') return 'Activacion';
+  if ($action === 'deactivate') return 'Desactivacion';
+  return $action;
+}
+
+function inventoryHistoryDetail(array $history): string {
+  $snapshot = json_decode((string)($history['after_snapshot'] ?? ''), true);
+  if (!is_array($snapshot)) {
+    $snapshot = json_decode((string)($history['before_snapshot'] ?? ''), true);
+  }
+  if (!is_array($snapshot)) {
+    return '-';
+  }
+
+  $quantity = rtrim(rtrim(number_format((float)($snapshot['quantity'] ?? 0), 2, '.', ''), '0'), '.');
+  $status = (int)($snapshot['is_active'] ?? 0) === 1 ? 'Activo' : 'Inactivo';
+  return trim((string)($snapshot['name'] ?? '')) . ' | ' . $quantity . ' ' . trim((string)($snapshot['unit'] ?? '')) . ' | ' . $status;
+}
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
 
   <div class="content p-4">
-    <h3 class="mb-3">Inventario por area</h3>
+    <div class="page-toolbar mb-3">
+      <h3 class="mb-0">Inventario por area</h3>
+      <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#modalCreateInventory">
+        + Registrar inventario
+      </button>
+    </div>
+
+    <?php if (!empty($msg)): ?>
+      <div class="alert alert-<?= Helpers::e($msg['type']) ?>"><?= Helpers::e($msg['text']) ?></div>
+    <?php endif; ?>
 
     <div class="card shadow-sm mb-3">
       <div class="card-body">
@@ -71,6 +103,7 @@ require_once __DIR__ . '/../../core/Pagination.php';
                   <th>Unidad</th>
                   <th>Estado</th>
                   <th>Notas</th>
+                  <th style="width: 110px;">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -88,15 +121,203 @@ require_once __DIR__ . '/../../core/Pagination.php';
                       </span>
                     </td>
                     <td><?= Helpers::e($item['notes'] ?? '-') ?></td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#modalEditInventory<?= (int)$item['id'] ?>">
+                        Editar
+                      </button>
+                      <button class="btn btn-sm btn-outline-primary mt-1" type="button" data-bs-toggle="modal" data-bs-target="#modalHistoryInventory<?= (int)$item['id'] ?>">
+                        Historial
+                      </button>
+                    </td>
                   </tr>
                 <?php endforeach; ?>
               </tbody>
             </table>
           </div>
+
+          <?php foreach ($items as $item): ?>
+            <div class="modal fade" id="modalEditInventory<?= (int)$item['id'] ?>" tabindex="-1">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <form method="POST">
+                    <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
+
+                    <div class="modal-header">
+                      <h5 class="modal-title">Editar item de inventario</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                      <div class="row g-2">
+                        <div class="col-md-6">
+                          <label class="form-label">Area</label>
+                          <select class="form-select" name="area_id" required>
+                            <option value="">Selecciona area</option>
+                            <?php foreach ($areas as $area): ?>
+                              <option value="<?= (int)$area['id'] ?>" <?= (int)$item['area_id'] === (int)$area['id'] ? 'selected' : '' ?>>
+                                <?= Helpers::e($area['name']) ?>
+                              </option>
+                            <?php endforeach; ?>
+                          </select>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label">Trabajador</label>
+                          <select class="form-select" name="user_id" required>
+                            <option value="">Selecciona trabajador</option>
+                            <?php foreach ($workers as $worker): ?>
+                              <option value="<?= (int)$worker['id'] ?>" <?= (int)$item['user_id'] === (int)$worker['id'] ? 'selected' : '' ?>>
+                                <?= Helpers::e($worker['document_number'] . ' - ' . $worker['first_name'] . ' ' . $worker['last_name']) ?>
+                              </option>
+                            <?php endforeach; ?>
+                          </select>
+                        </div>
+                        <div class="col-md-12">
+                          <label class="form-label">Item</label>
+                          <input class="form-control" name="name" value="<?= Helpers::e($item['name']) ?>" required>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label">Cantidad</label>
+                          <input type="number" step="0.01" min="0" class="form-control" name="quantity" value="<?= Helpers::e($item['quantity']) ?>" required>
+                        </div>
+                        <div class="col-md-6">
+                          <label class="form-label">Unidad</label>
+                          <input class="form-control" name="unit" value="<?= Helpers::e($item['unit']) ?>" placeholder="kg, unid, botellas..." required>
+                        </div>
+                        <div class="col-md-12">
+                          <label class="form-label">Notas</label>
+                          <textarea class="form-control" name="notes" rows="3"><?= Helpers::e($item['notes'] ?? '') ?></textarea>
+                        </div>
+                        <div class="col-md-12">
+                          <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="inventoryActive<?= (int)$item['id'] ?>" <?= (int)$item['is_active'] === 1 ? 'checked' : '' ?>>
+                            <label class="form-check-label" for="inventoryActive<?= (int)$item['id'] ?>">Activo</label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="modal-footer">
+                      <button class="btn btn-primary">Guardar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal fade" id="modalHistoryInventory<?= (int)$item['id'] ?>" tabindex="-1">
+              <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <div>
+                      <h5 class="modal-title">Historial de inventario</h5>
+                      <div class="text-muted small"><?= Helpers::e($item['name']) ?></div>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+
+                  <div class="modal-body">
+                    <?php $historyRows = $inventoryHistory[(int)$item['id']] ?? []; ?>
+                    <?php if (empty($historyRows)): ?>
+                      <div class="text-muted">Aun no hay historial registrado para este item.</div>
+                    <?php else: ?>
+                      <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                          <thead>
+                            <tr>
+                              <th>Fecha</th>
+                              <th>Accion</th>
+                              <th>Usuario</th>
+                              <th>Rol</th>
+                              <th>Detalle</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <?php foreach ($historyRows as $history): ?>
+                              <tr>
+                                <td><?= Helpers::e(Helpers::formatDateTime($history['created_at'])) ?></td>
+                                <td><?= Helpers::e(inventoryActionLabel((string)$history['action'])) ?></td>
+                                <td><?= Helpers::e(trim(($history['first_name'] ?? '') . ' ' . ($history['last_name'] ?? '')) ?: '-') ?></td>
+                                <td><?= Helpers::e(($history['actor_role'] ?? '') === 'admin' ? 'Administrador' : 'Trabajador') ?></td>
+                                <td><?= Helpers::e(inventoryHistoryDetail($history)) ?></td>
+                              </tr>
+                            <?php endforeach; ?>
+                          </tbody>
+                        </table>
+                      </div>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              </div>
+            </div>
+          <?php endforeach; ?>
+
           <?= Pagination::render($inventoryGroupPaginationMeta) ?>
         </div>
       </div>
     <?php endforeach; ?>
+
+    <div class="modal fade" id="modalCreateInventory" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <form method="POST">
+            <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+            <input type="hidden" name="action" value="create">
+
+            <div class="modal-header">
+              <h5 class="modal-title">Registrar inventario</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label">Area</label>
+                  <select class="form-select" name="area_id" required>
+                    <option value="">Selecciona area</option>
+                    <?php foreach ($areas as $area): ?>
+                      <option value="<?= (int)$area['id'] ?>"><?= Helpers::e($area['name']) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Trabajador</label>
+                  <select class="form-select" name="user_id" required>
+                    <option value="">Selecciona trabajador</option>
+                    <?php foreach ($workers as $worker): ?>
+                      <option value="<?= (int)$worker['id'] ?>">
+                        <?= Helpers::e($worker['document_number'] . ' - ' . $worker['first_name'] . ' ' . $worker['last_name']) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label">Item</label>
+                  <input class="form-control" name="name" placeholder="Ej: Servilleteros" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Cantidad</label>
+                  <input type="number" step="0.01" min="0" class="form-control" name="quantity" required>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Unidad</label>
+                  <input class="form-control" name="unit" placeholder="kg, unid, botellas..." required>
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label">Notas</label>
+                  <textarea class="form-control" name="notes" rows="3"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="modal-footer">
+              <button class="btn btn-primary">Registrar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 <?php require __DIR__ . '/../layouts/footer.php'; ?>

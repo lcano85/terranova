@@ -394,6 +394,47 @@ class AdminController extends Controller
           Requirement::deleteItem((int)($_POST['item_id'] ?? 0));
           $msg = ['type' => 'warning', 'text' => 'Item eliminado del requerimiento'];
         }
+
+        if ($action === 'create_requirement') {
+          $workerId = (int)($_POST['user_id'] ?? 0);
+          $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
+          $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+          $itemsRaw = (array)($_POST['items'] ?? []);
+          $sanitized = Requirement::sanitizeItems($itemsRaw);
+          $items = $sanitized['items'];
+
+          $worker = User::findWithDetails($workerId);
+          if (!$worker || !in_array(($worker['role'] ?? ''), ['admin', 'worker'], true)) {
+            throw new RuntimeException('Debes seleccionar un trabajador o administrador valido.');
+          }
+          if ($purchaseAreaId <= 0) {
+            throw new RuntimeException('Debes seleccionar un area de compra.');
+          }
+          $date = DateTime::createFromFormat('Y-m-d', $requiredDate);
+          if (!$date || $date->format('Y-m-d') !== $requiredDate) {
+            throw new RuntimeException('Debes seleccionar una fecha valida.');
+          }
+          if (empty($items)) {
+            throw new RuntimeException('Debes ingresar al menos un producto.');
+          }
+          if (!empty($sanitized['duplicates'])) {
+            throw new RuntimeException('No puedes repetir productos en el mismo registro: ' . implode(', ', $sanitized['duplicates']));
+          }
+
+          $existingDuplicates = Requirement::duplicateItemsForWorkerSlot(
+            $workerId,
+            $purchaseAreaId,
+            $requiredDate,
+            $items
+          );
+          if (!empty($existingDuplicates)) {
+            throw new RuntimeException('Estos productos ya fueron registrados para esa area y fecha: ' . implode(', ', $existingDuplicates));
+          }
+
+          $requirementId = Requirement::create($workerId, $purchaseAreaId, $requiredDate, $items, 'submitted');
+          $selectedWeekStart = Requirement::normalizeWeekStart($requiredDate);
+          $msg = ['type' => 'success', 'text' => 'Requerimiento registrado #' . $requirementId];
+        }
       } catch (Throwable $e) {
         if ($expectsJson) {
           $this->jsonResponse([
@@ -409,6 +450,10 @@ class AdminController extends Controller
     $week = Requirement::weekRangeForDate($selectedWeekStart);
     $rows = Requirement::forAdminWeek($week['from']);
     $weekOptions = Requirement::weekOptions(8);
+    $workers = User::allRequirementUsers();
+    $purchaseAreas = PurchaseArea::active();
+    $today = date('Y-m-d');
+    $defaultRequirementDate = ($today >= $week['from'] && $today <= $week['to']) ? $today : $week['from'];
     $mailLogs = array_slice($this->requirementMailLogs(), 0, 10);
     $grouped = [];
 
@@ -417,6 +462,7 @@ class AdminController extends Controller
       if (!isset($grouped[$workerKey])) {
         $grouped[$workerKey] = [
           'worker_name' => trim($row['first_name'] . ' ' . $row['last_name']),
+          'user_role' => $row['user_role'] ?? 'worker',
           'areas' => []
         ];
       }
@@ -434,7 +480,7 @@ class AdminController extends Controller
       $grouped[$workerKey]['areas'][$areaKey]['items'][] = $row;
     }
 
-    $this->view('admin/requirements', compact('msg', 'week', 'grouped', 'selectedWeekStart', 'weekOptions', 'mailLogs'));
+    $this->view('admin/requirements', compact('msg', 'week', 'grouped', 'selectedWeekStart', 'weekOptions', 'mailLogs', 'workers', 'purchaseAreas', 'defaultRequirementDate'));
   }
 
   private function requirementMailLogs(): array
@@ -488,7 +534,7 @@ class AdminController extends Controller
       }
     }
 
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $assignments = Activity::assignedAll();
     $week = Activity::weekRangeForDate();
     $rows = Activity::performedForAdminWeek($week['from']);
@@ -568,7 +614,7 @@ class AdminController extends Controller
       }
     }
 
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $tasks = Task::catalogAll();
     $assignments = Task::assignmentsAll();
     $board = Task::weeklyBoard();
@@ -710,7 +756,7 @@ class AdminController extends Controller
     $to = trim($_GET['to'] ?? '');
 
     $rows = Attendance::filter($doc ?: null, $from ?: null, $to ?: null);
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $this->view('admin/attendance', compact('rows', 'doc', 'from', 'to', 'workers', 'msg'));
   }
 
@@ -746,7 +792,7 @@ class AdminController extends Controller
       }
     }
 
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $selectedMonth = trim((string)($_GET['month'] ?? date('Y-m')));
     if (!DateTime::createFromFormat('Y-m', $selectedMonth)) {
       $selectedMonth = date('Y-m');
@@ -808,6 +854,7 @@ class AdminController extends Controller
   public function inventory(): void
   {
     Auth::requireRole('admin');
+    $msg = null;
 
     $areaId = (int)($_GET['area_id'] ?? 0);
     $status = $_GET['status'] ?? '';
@@ -819,15 +866,83 @@ class AdminController extends Controller
       $statusFilter = 0;
     }
 
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        $userId = (int)($_POST['user_id'] ?? 0);
+        $itemAreaId = (int)($_POST['area_id'] ?? 0);
+        $name = trim((string)($_POST['name'] ?? ''));
+        $quantity = (float)($_POST['quantity'] ?? 0);
+        $unit = trim((string)($_POST['unit'] ?? ''));
+        $notes = trim((string)($_POST['notes'] ?? ''));
+        $isActive = isset($_POST['is_active']) ? 1 : 0;
+
+        if (in_array($action, ['create', 'update'], true)) {
+          $worker = User::findWithDetails($userId);
+          if (!$worker || ($worker['role'] ?? '') !== 'worker' || (int)($worker['is_active'] ?? 0) !== 1) {
+            throw new RuntimeException('Debes seleccionar un trabajador activo.');
+          }
+          if ($itemAreaId <= 0) {
+            throw new RuntimeException('Debes seleccionar un area.');
+          }
+          if ($name === '') {
+            throw new RuntimeException('El nombre del item es obligatorio.');
+          }
+          if ($quantity < 0) {
+            throw new RuntimeException('La cantidad no puede ser negativa.');
+          }
+          if ($unit === '') {
+            throw new RuntimeException('La unidad es obligatoria.');
+          }
+        }
+
+        if ($action === 'create') {
+          InventoryItem::create(
+            $userId,
+            $itemAreaId,
+            $name,
+            $quantity,
+            $unit,
+            $notes !== '' ? $notes : null,
+            (int)(Auth::user()['id'] ?? 0),
+            'admin'
+          );
+          $msg = ['type' => 'success', 'text' => 'Item de inventario registrado'];
+        }
+
+        if ($action === 'update') {
+          InventoryItem::updateByAdmin(
+            (int)($_POST['id'] ?? 0),
+            $userId,
+            $itemAreaId,
+            $name,
+            $quantity,
+            $unit,
+            $notes !== '' ? $notes : null,
+            $isActive,
+            (int)(Auth::user()['id'] ?? 0),
+            'admin'
+          );
+          $msg = ['type' => 'success', 'text' => 'Item de inventario actualizado'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
     $areas = WorkArea::all();
+    $workers = User::activeWorkers();
     $rows = InventoryItem::forAdmin($areaId > 0 ? $areaId : null, $statusFilter);
+    $inventoryHistory = InventoryItem::historyForItems(array_column($rows, 'id'));
 
     $grouped = [];
     foreach ($rows as $row) {
       $grouped[$row['area_name']][] = $row;
     }
 
-    $this->view('admin/inventory', compact('areas', 'rows', 'grouped', 'areaId', 'status'));
+    $this->view('admin/inventory', compact('areas', 'workers', 'rows', 'grouped', 'inventoryHistory', 'areaId', 'status', 'msg'));
   }
 
   public function products(): void

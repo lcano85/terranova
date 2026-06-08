@@ -533,7 +533,7 @@ class WorkerController extends Controller {
         }
 
         if ($action === 'create') {
-          InventoryItem::create($userId, $areaId, $name, $quantity, $unit, $notes !== '' ? $notes : null);
+          InventoryItem::create($userId, $areaId, $name, $quantity, $unit, $notes !== '' ? $notes : null, $userId, 'worker');
           $msg = ['type' => 'success', 'text' => 'Item registrado'];
         }
 
@@ -544,18 +544,20 @@ class WorkerController extends Controller {
             $name,
             $quantity,
             $unit,
-            $notes !== '' ? $notes : null
+            $notes !== '' ? $notes : null,
+            $userId,
+            'worker'
           );
           $msg = ['type' => 'success', 'text' => 'Item actualizado'];
         }
 
         if ($action === 'deactivate') {
-          InventoryItem::setActiveByWorker((int)($_POST['id'] ?? 0), $userId, 0);
+          InventoryItem::setActiveByWorker((int)($_POST['id'] ?? 0), $userId, 0, $userId, 'worker');
           $msg = ['type' => 'warning', 'text' => 'Item desactivado'];
         }
 
         if ($action === 'activate') {
-          InventoryItem::setActiveByWorker((int)($_POST['id'] ?? 0), $userId, 1);
+          InventoryItem::setActiveByWorker((int)($_POST['id'] ?? 0), $userId, 1, $userId, 'worker');
           $msg = ['type' => 'success', 'text' => 'Item activado'];
         }
       } catch (Throwable $e) {
@@ -564,6 +566,7 @@ class WorkerController extends Controller {
     }
 
     $rows = InventoryItem::byWorker((int)$user['id']);
-    $this->view('worker/inventory', compact('user', 'rows', 'msg'));
+    $inventoryHistory = InventoryItem::historyForItems(array_column($rows, 'id'), (int)$user['id']);
+    $this->view('worker/inventory', compact('user', 'rows', 'inventoryHistory', 'msg'));
   }
 }
