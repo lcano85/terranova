@@ -42,7 +42,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
 
     <div class="card shadow-sm mb-3">
       <div class="card-header bg-white">
-        <button class="btn w-100 p-0 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#mailLogCollapse" aria-expanded="true" aria-controls="mailLogCollapse">
+        <button class="btn w-100 p-0 text-start collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#mailLogCollapse" aria-expanded="false" aria-controls="mailLogCollapse">
           <div class="page-toolbar">
             <div>
               <h5 class="mb-0">Log de correos</h5>
@@ -52,7 +52,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
           </div>
         </button>
       </div>
-      <div class="collapse show" id="mailLogCollapse">
+      <div class="collapse" id="mailLogCollapse">
         <div class="card-body table-responsive">
           <table class="table align-middle">
             <thead>
@@ -79,7 +79,9 @@ require_once __DIR__ . '/../../core/Csrf.php';
                 </tr>
               <?php endforeach; ?>
               <?php if (empty($mailLogs)): ?>
-                <tr><td colspan="5" class="text-muted">Aun no hay correos registrados.</td></tr>
+                <tr>
+                  <td colspan="5" class="text-muted">Aun no hay correos registrados.</td>
+                </tr>
               <?php endif; ?>
             </tbody>
           </table>
@@ -166,23 +168,22 @@ require_once __DIR__ . '/../../core/Csrf.php';
 
     <?php foreach ($grouped as $workerIndex => $worker): ?>
       <?php
-        $workerTotalItems = 0;
-        $workerPendingItems = 0;
-        foreach ($worker['areas'] as $area) {
-          foreach ($area['items'] as $item) {
-            $workerTotalItems++;
-            if ((int)$item['is_purchased'] !== 1) {
-              $workerPendingItems++;
-            }
+      $workerTotalItems = 0;
+      $workerPendingItems = 0;
+      foreach ($worker['areas'] as $area) {
+        foreach ($area['items'] as $item) {
+          $workerTotalItems++;
+          if ((int)$item['is_purchased'] !== 1) {
+            $workerPendingItems++;
           }
         }
-        $workerPurchasedItems = max(0, $workerTotalItems - $workerPendingItems);
-        $workerIsComplete = $workerTotalItems > 0 && $workerPendingItems === 0;
-        $workerIsAdmin = ($worker['user_role'] ?? '') === 'admin';
-        $workerIsOpen = $workerIsAdmin || $workerIsComplete;
-        $workerCollapseId = 'workerRequirements' . (int)$workerIndex;
+      }
+      $workerPurchasedItems = max(0, $workerTotalItems - $workerPendingItems);
+      $workerIsAdmin = ($worker['user_role'] ?? '') === 'admin';
+      $workerIsOpen = $workerPendingItems > 0;
+      $workerCollapseId = 'workerRequirements' . (int)$workerIndex;
       ?>
-      <div class="card shadow-sm mb-3" data-requirement-worker-card <?= $workerIsAdmin ? 'data-admin-requirements-card' : '' ?>>
+      <div class="card shadow-sm mb-3" data-requirement-worker-card>
         <div class="card-header bg-white">
           <button class="btn w-100 p-0 text-start" type="button" data-bs-toggle="collapse" data-bs-target="#<?= Helpers::e($workerCollapseId) ?>" aria-expanded="<?= $workerIsOpen ? 'true' : 'false' ?>" aria-controls="<?= Helpers::e($workerCollapseId) ?>">
             <div class="page-toolbar">
@@ -203,7 +204,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
           </button>
         </div>
 
-        <div class="collapse <?= $workerIsOpen ? 'show' : '' ?>" id="<?= Helpers::e($workerCollapseId) ?>" <?= $workerIsAdmin ? 'data-admin-requirements-collapse' : '' ?>>
+        <div class="collapse <?= $workerIsOpen ? 'show' : '' ?>" id="<?= Helpers::e($workerCollapseId) ?>">
           <div class="card-body">
 
             <?php foreach ($worker['areas'] as $area): ?>
@@ -228,11 +229,11 @@ require_once __DIR__ . '/../../core/Csrf.php';
                           <input type="hidden" name="item_id" value="<?= (int)$item['item_id'] ?>">
 
                           <input class="form-check-input mt-0"
-                                 type="checkbox"
-                                 name="is_purchased"
-                                 value="1"
-                                 data-role="purchase-toggle"
-                                 <?= (int)$item['is_purchased'] === 1 ? 'checked' : '' ?>>
+                            type="checkbox"
+                            name="is_purchased"
+                            value="1"
+                            data-role="purchase-toggle"
+                            <?= (int)$item['is_purchased'] === 1 ? 'checked' : '' ?>>
                           <label class="form-check-label flex-grow-1">
                             <?= Helpers::e($item['item_name']) ?>
                           </label>
@@ -278,19 +279,6 @@ require_once __DIR__ . '/../../core/Csrf.php';
       });
     }
 
-    document.querySelectorAll('[data-admin-requirements-collapse]').forEach(function(section) {
-      section.classList.add('show');
-
-      const button = document.querySelector('[data-bs-target="#' + section.id + '"]');
-      if (button) {
-        button.setAttribute('aria-expanded', 'true');
-      }
-
-      if (window.bootstrap?.Collapse) {
-        window.bootstrap.Collapse.getOrCreateInstance(section, { toggle: false }).show();
-      }
-    });
-
     function updateWorkerSummary(form) {
       const card = form.closest('[data-requirement-worker-card]');
       if (!card) {
@@ -316,6 +304,24 @@ require_once __DIR__ . '/../../core/Csrf.php';
         statusEl.textContent = pendingCount > 0 ? pendingCount + ' pendiente(s)' : 'Completo';
         statusEl.classList.remove('text-bg-warning', 'text-bg-success');
         statusEl.classList.add(pendingCount > 0 ? 'text-bg-warning' : 'text-bg-success');
+      }
+
+      const section = card.querySelector('.collapse');
+      const button = section ? card.querySelector('[data-bs-target="#' + section.id + '"]') : null;
+      if (section && button) {
+        button.setAttribute('aria-expanded', pendingCount > 0 ? 'true' : 'false');
+        if (window.bootstrap?.Collapse) {
+          const collapse = window.bootstrap.Collapse.getOrCreateInstance(section, {
+            toggle: false
+          });
+          if (pendingCount > 0) {
+            collapse.show();
+          } else {
+            collapse.hide();
+          }
+        } else {
+          section.classList.toggle('show', pendingCount > 0);
+        }
       }
     }
 
