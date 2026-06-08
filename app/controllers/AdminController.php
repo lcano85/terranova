@@ -534,7 +534,7 @@ class AdminController extends Controller
       }
     }
 
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $assignments = Activity::assignedAll();
     $week = Activity::weekRangeForDate();
     $rows = Activity::performedForAdminWeek($week['from']);
@@ -614,7 +614,7 @@ class AdminController extends Controller
       }
     }
 
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $tasks = Task::catalogAll();
     $assignments = Task::assignmentsAll();
     $board = Task::weeklyBoard();
@@ -756,7 +756,7 @@ class AdminController extends Controller
     $to = trim($_GET['to'] ?? '');
 
     $rows = Attendance::filter($doc ?: null, $from ?: null, $to ?: null);
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $this->view('admin/attendance', compact('rows', 'doc', 'from', 'to', 'workers', 'msg'));
   }
 
@@ -792,7 +792,7 @@ class AdminController extends Controller
       }
     }
 
-    $workers = User::allWorkers();
+    $workers = User::activeWorkers();
     $selectedMonth = trim((string)($_GET['month'] ?? date('Y-m')));
     if (!DateTime::createFromFormat('Y-m', $selectedMonth)) {
       $selectedMonth = date('Y-m');
