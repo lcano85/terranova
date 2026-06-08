@@ -854,6 +854,7 @@ class AdminController extends Controller
   public function inventory(): void
   {
     Auth::requireRole('admin');
+    $msg = null;
 
     $areaId = (int)($_GET['area_id'] ?? 0);
     $status = $_GET['status'] ?? '';
@@ -865,15 +866,83 @@ class AdminController extends Controller
       $statusFilter = 0;
     }
 
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        $userId = (int)($_POST['user_id'] ?? 0);
+        $itemAreaId = (int)($_POST['area_id'] ?? 0);
+        $name = trim((string)($_POST['name'] ?? ''));
+        $quantity = (float)($_POST['quantity'] ?? 0);
+        $unit = trim((string)($_POST['unit'] ?? ''));
+        $notes = trim((string)($_POST['notes'] ?? ''));
+        $isActive = isset($_POST['is_active']) ? 1 : 0;
+
+        if (in_array($action, ['create', 'update'], true)) {
+          $worker = User::findWithDetails($userId);
+          if (!$worker || ($worker['role'] ?? '') !== 'worker' || (int)($worker['is_active'] ?? 0) !== 1) {
+            throw new RuntimeException('Debes seleccionar un trabajador activo.');
+          }
+          if ($itemAreaId <= 0) {
+            throw new RuntimeException('Debes seleccionar un area.');
+          }
+          if ($name === '') {
+            throw new RuntimeException('El nombre del item es obligatorio.');
+          }
+          if ($quantity < 0) {
+            throw new RuntimeException('La cantidad no puede ser negativa.');
+          }
+          if ($unit === '') {
+            throw new RuntimeException('La unidad es obligatoria.');
+          }
+        }
+
+        if ($action === 'create') {
+          InventoryItem::create(
+            $userId,
+            $itemAreaId,
+            $name,
+            $quantity,
+            $unit,
+            $notes !== '' ? $notes : null,
+            (int)(Auth::user()['id'] ?? 0),
+            'admin'
+          );
+          $msg = ['type' => 'success', 'text' => 'Item de inventario registrado'];
+        }
+
+        if ($action === 'update') {
+          InventoryItem::updateByAdmin(
+            (int)($_POST['id'] ?? 0),
+            $userId,
+            $itemAreaId,
+            $name,
+            $quantity,
+            $unit,
+            $notes !== '' ? $notes : null,
+            $isActive,
+            (int)(Auth::user()['id'] ?? 0),
+            'admin'
+          );
+          $msg = ['type' => 'success', 'text' => 'Item de inventario actualizado'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
     $areas = WorkArea::all();
+    $workers = User::activeWorkers();
     $rows = InventoryItem::forAdmin($areaId > 0 ? $areaId : null, $statusFilter);
+    $inventoryHistory = InventoryItem::historyForItems(array_column($rows, 'id'));
 
     $grouped = [];
     foreach ($rows as $row) {
       $grouped[$row['area_name']][] = $row;
     }
 
-    $this->view('admin/inventory', compact('areas', 'rows', 'grouped', 'areaId', 'status'));
+    $this->view('admin/inventory', compact('areas', 'workers', 'rows', 'grouped', 'inventoryHistory', 'areaId', 'status', 'msg'));
   }
 
   public function products(): void

@@ -4,6 +4,28 @@ Auth::requireRole('worker');
 require_once __DIR__ . '/../../core/Csrf.php';
 require_once __DIR__ . '/../../core/Pagination.php';
 
+function inventoryActionLabel(string $action): string {
+  if ($action === 'create') return 'Creacion';
+  if ($action === 'update') return 'Actualizacion';
+  if ($action === 'activate') return 'Activacion';
+  if ($action === 'deactivate') return 'Desactivacion';
+  return $action;
+}
+
+function inventoryHistoryDetail(array $history): string {
+  $snapshot = json_decode((string)($history['after_snapshot'] ?? ''), true);
+  if (!is_array($snapshot)) {
+    $snapshot = json_decode((string)($history['before_snapshot'] ?? ''), true);
+  }
+  if (!is_array($snapshot)) {
+    return '-';
+  }
+
+  $quantity = rtrim(rtrim(number_format((float)($snapshot['quantity'] ?? 0), 2, '.', ''), '0'), '.');
+  $status = (int)($snapshot['is_active'] ?? 0) === 1 ? 'Activo' : 'Inactivo';
+  return trim((string)($snapshot['name'] ?? '')) . ' | ' . $quantity . ' ' . trim((string)($snapshot['unit'] ?? '')) . ' | ' . $status;
+}
+
 $workerInventoryPagination = Pagination::paginateArray($rows, 'worker_inventory_page', 'worker_inventory_per_page');
 $rows = $workerInventoryPagination['rows'];
 $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
@@ -43,7 +65,7 @@ $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
               <th>Unidad</th>
               <th>Estado</th>
               <th>Notas</th>
-              <th style="width: 220px;">Acciones</th>
+              <th style="width: 300px;">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -63,6 +85,9 @@ $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
                   <button class="btn btn-sm btn-outline-secondary"
                           data-bs-toggle="modal"
                           data-bs-target="#modalEditInventory<?= (int)$r['id'] ?>">Editar</button>
+                  <button class="btn btn-sm btn-outline-primary"
+                          data-bs-toggle="modal"
+                          data-bs-target="#modalHistoryInventory<?= (int)$r['id'] ?>">Historial</button>
 
                   <?php if ((int)$r['is_active'] === 1): ?>
                     <form method="POST" onsubmit="return confirm('Desactivar item?');">
@@ -81,48 +106,6 @@ $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
                   <?php endif; ?>
                 </td>
               </tr>
-
-              <div class="modal fade" id="modalEditInventory<?= (int)$r['id'] ?>" tabindex="-1">
-                <div class="modal-dialog">
-                  <div class="modal-content">
-                    <form method="POST">
-                      <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
-                      <input type="hidden" name="action" value="update">
-                      <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
-
-                      <div class="modal-header">
-                        <h5 class="modal-title">Editar item</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                      </div>
-
-                      <div class="modal-body">
-                        <div class="row g-2">
-                          <div class="col-md-12">
-                            <label class="form-label">Nombre</label>
-                            <input class="form-control" name="name" value="<?= Helpers::e($r['name']) ?>" required>
-                          </div>
-                          <div class="col-md-6">
-                            <label class="form-label">Cantidad</label>
-                            <input type="number" step="0.01" min="0" class="form-control" name="quantity" value="<?= Helpers::e($r['quantity']) ?>" required>
-                          </div>
-                          <div class="col-md-6">
-                            <label class="form-label">Unidad</label>
-                            <input class="form-control" name="unit" value="<?= Helpers::e($r['unit']) ?>" placeholder="kg, unid, botellas..." required>
-                          </div>
-                          <div class="col-md-12">
-                            <label class="form-label">Notas</label>
-                            <textarea class="form-control" name="notes" rows="3"><?= Helpers::e($r['notes'] ?? '') ?></textarea>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="modal-footer">
-                        <button class="btn btn-primary">Guardar</button>
-                      </div>
-                    </form>
-                  </div>
-                </div>
-              </div>
             <?php endforeach; ?>
 
             <?php if (empty($rows)): ?>
@@ -131,6 +114,97 @@ $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
           </tbody>
         </table>
       </div>
+
+      <?php foreach ($rows as $r): ?>
+        <div class="modal fade" id="modalEditInventory<?= (int)$r['id'] ?>" tabindex="-1">
+          <div class="modal-dialog">
+            <div class="modal-content">
+              <form method="POST">
+                <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+
+                <div class="modal-header">
+                  <h5 class="modal-title">Editar item</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+
+                <div class="modal-body">
+                  <div class="row g-2">
+                    <div class="col-md-12">
+                      <label class="form-label">Nombre</label>
+                      <input class="form-control" name="name" value="<?= Helpers::e($r['name']) ?>" required>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">Cantidad</label>
+                      <input type="number" step="0.01" min="0" class="form-control" name="quantity" value="<?= Helpers::e($r['quantity']) ?>" required>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">Unidad</label>
+                      <input class="form-control" name="unit" value="<?= Helpers::e($r['unit']) ?>" placeholder="kg, unid, botellas..." required>
+                    </div>
+                    <div class="col-md-12">
+                      <label class="form-label">Notas</label>
+                      <textarea class="form-control" name="notes" rows="3"><?= Helpers::e($r['notes'] ?? '') ?></textarea>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="modal-footer">
+                  <button class="btn btn-primary">Guardar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal fade" id="modalHistoryInventory<?= (int)$r['id'] ?>" tabindex="-1">
+          <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+              <div class="modal-header">
+                <div>
+                  <h5 class="modal-title">Historial de inventario</h5>
+                  <div class="text-muted small"><?= Helpers::e($r['name']) ?></div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+              </div>
+
+              <div class="modal-body">
+                <?php $historyRows = $inventoryHistory[(int)$r['id']] ?? []; ?>
+                <?php if (empty($historyRows)): ?>
+                  <div class="text-muted">Aun no hay historial registrado para este item.</div>
+                <?php else: ?>
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Accion</th>
+                          <th>Usuario</th>
+                          <th>Rol</th>
+                          <th>Detalle</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <?php foreach ($historyRows as $history): ?>
+                          <tr>
+                            <td><?= Helpers::e(Helpers::formatDateTime($history['created_at'])) ?></td>
+                            <td><?= Helpers::e(inventoryActionLabel((string)$history['action'])) ?></td>
+                            <td><?= Helpers::e(trim(($history['first_name'] ?? '') . ' ' . ($history['last_name'] ?? '')) ?: '-') ?></td>
+                            <td><?= Helpers::e(($history['actor_role'] ?? '') === 'admin' ? 'Administrador' : 'Trabajador') ?></td>
+                            <td><?= Helpers::e(inventoryHistoryDetail($history)) ?></td>
+                          </tr>
+                        <?php endforeach; ?>
+                      </tbody>
+                    </table>
+                  </div>
+                <?php endif; ?>
+              </div>
+            </div>
+          </div>
+        </div>
+      <?php endforeach; ?>
+
       <?= Pagination::render($workerInventoryPaginationMeta) ?>
     </div>
 
