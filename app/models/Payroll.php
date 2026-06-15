@@ -57,6 +57,15 @@ class Payroll
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
 
+    $publishedColumn = $pdo->query("SHOW COLUMNS FROM payrolls LIKE 'is_published'")->fetch();
+    if (!$publishedColumn) {
+      $pdo->exec("
+        ALTER TABLE payrolls
+        ADD COLUMN is_published TINYINT(1) NOT NULL DEFAULT 0 AFTER notes,
+        ADD INDEX idx_payrolls_user_published (user_id, is_published, created_at)
+      ");
+    }
+
     self::$schemaEnsured = true;
   }
 
@@ -218,8 +227,8 @@ class Payroll
           user_id, payment_type, period_month, period_start, period_end,
           salary_basis, salary_amount, base_days, daily_rate, hours_per_day,
           worked_days, gross_amount, late_minutes, late_rate_per_minute, late_discount,
-          additions_total, deductions_total, net_amount, notes, created_by
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          additions_total, deductions_total, net_amount, notes, is_published, created_by
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ");
       $st->execute([
         (int)$preview['user']['id'],
@@ -241,6 +250,7 @@ class Payroll
         $preview['deductions_total'],
         $preview['net_amount'],
         trim((string)($input['notes'] ?? '')),
+        self::publishedValue($input['is_published'] ?? 0),
         $createdBy,
       ]);
 
@@ -295,7 +305,8 @@ class Payroll
           user_id = ?, payment_type = ?, period_month = ?, period_start = ?, period_end = ?,
           salary_basis = ?, salary_amount = ?, base_days = ?, daily_rate = ?, hours_per_day = ?,
           worked_days = ?, gross_amount = ?, late_minutes = ?, late_rate_per_minute = ?,
-          late_discount = ?, additions_total = ?, deductions_total = ?, net_amount = ?, notes = ?
+          late_discount = ?, additions_total = ?, deductions_total = ?, net_amount = ?,
+          notes = ?, is_published = ?
         WHERE id = ?
       ");
       $st->execute([
@@ -318,6 +329,7 @@ class Payroll
         $preview['deductions_total'],
         $preview['net_amount'],
         trim((string)($input['notes'] ?? '')),
+        self::publishedValue($input['is_published'] ?? 0),
         $id,
       ]);
 
@@ -362,6 +374,27 @@ class Payroll
     $st = Database::conn()->prepare("SELECT * FROM payroll_items WHERE payroll_id=? ORDER BY id ASC");
     $st->execute([$payrollId]);
     return $st->fetchAll();
+  }
+
+  public static function publishedForWorker(int $userId): array
+  {
+    self::ensureSchema();
+    $st = Database::conn()->prepare("
+      SELECT *
+      FROM payrolls
+      WHERE user_id = ?
+        AND is_published = 1
+      ORDER BY created_at DESC, id DESC
+    ");
+    $st->execute([$userId]);
+    $rows = $st->fetchAll();
+
+    foreach ($rows as &$row) {
+      $row['items'] = self::items((int)$row['id']);
+    }
+    unset($row);
+
+    return $rows;
   }
 
   public static function delete(int $id): void
@@ -421,5 +454,10 @@ class Payroll
   private static function number($value): float
   {
     return round(max(0, (float)$value), 2);
+  }
+
+  private static function publishedValue($value): int
+  {
+    return in_array((string)$value, ['1', 'published'], true) ? 1 : 0;
   }
 }

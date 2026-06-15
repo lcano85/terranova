@@ -15,6 +15,7 @@ $salaryBasis = (string)($_GET['salary_basis'] ?? ($preview['salary_basis'] ?? 'd
 $salaryAmount = (string)($_GET['salary_amount'] ?? ($preview['salary_amount'] ?? ''));
 $baseDays = (string)($_GET['base_days'] ?? ($preview['base_days'] ?? ''));
 $hoursPerDay = (string)($_GET['hours_per_day'] ?? ($preview['hours_per_day'] ?? ''));
+$isPublished = (int)($editingPayroll['is_published'] ?? 0);
 
 $payrollPagination = Pagination::paginateArray($rows, 'payroll_page', 'payroll_per_page');
 $rows = $payrollPagination['rows'];
@@ -160,9 +161,17 @@ function payrollTypeLabel(string $type): string {
                     <label class="form-label">Minutos tardanza</label>
                     <input type="number" step="1" min="0" class="form-control js-calc" name="late_minutes" value="<?= (int)$preview['late_minutes'] ?>">
                   </div>
-                  <div class="col-md-6">
+                  <div class="col-md-4">
                     <label class="form-label">Notas</label>
                     <input class="form-control" name="notes" value="<?= Helpers::e((string)($editingPayroll['notes'] ?? '')) ?>" placeholder="Ej: no marco entrada el 19 y 21">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label">Publicacion</label>
+                    <select class="form-select" name="is_published">
+                      <option value="0" <?= $isPublished === 0 ? 'selected' : '' ?>>No publicado</option>
+                      <option value="1" <?= $isPublished === 1 ? 'selected' : '' ?>>Publicado</option>
+                    </select>
+                    <div class="form-text">Solo los publicados son visibles para el trabajador.</div>
                   </div>
                 </div>
 
@@ -273,6 +282,7 @@ function payrollTypeLabel(string $type): string {
               <th>Descuentos</th>
               <th>Adicionales</th>
               <th>Final</th>
+              <th>Publicacion</th>
               <th style="width: 170px;">Acciones</th>
             </tr>
           </thead>
@@ -289,6 +299,13 @@ function payrollTypeLabel(string $type): string {
                 <td>S/ <?= number_format((float)$r['additions_total'], 2) ?></td>
                 <td><strong>S/ <?= number_format((float)$r['net_amount'], 2) ?></strong></td>
                 <td>
+                  <?php if ((int)($r['is_published'] ?? 0) === 1): ?>
+                    <span class="badge text-bg-success">Publicado</span>
+                  <?php else: ?>
+                    <span class="badge text-bg-secondary">No publicado</span>
+                  <?php endif; ?>
+                </td>
+                <td>
                   <div class="d-flex gap-1">
                     <a class="btn btn-sm btn-outline-primary" href="<?= Helpers::e(BASE_URL . '/admin/payroll?month=' . urlencode($selectedMonth) . '&edit_id=' . (int)$r['id']) ?>">Editar</a>
                     <form method="POST" onsubmit="return confirm('Eliminar pago generado?');">
@@ -302,7 +319,7 @@ function payrollTypeLabel(string $type): string {
               </tr>
             <?php endforeach; ?>
             <?php if (empty($rows)): ?>
-              <tr><td colspan="10" class="text-muted">No hay pagos generados para este mes.</td></tr>
+              <tr><td colspan="11" class="text-muted">No hay pagos generados para este mes.</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
