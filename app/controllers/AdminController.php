@@ -24,6 +24,7 @@ require_once __DIR__ . '/../models/SalesImportAudit.php';
 require_once __DIR__ . '/../models/MailNotificationLog.php';
 require_once __DIR__ . '/../models/LeadDinnerStatus.php';
 require_once __DIR__ . '/../models/LeadDinnerEntry.php';
+require_once __DIR__ . '/../models/LeadDinnerCampaign.php';
 require_once __DIR__ . '/../core/XlsxReader.php';
 
 class AdminController extends Controller
@@ -88,6 +89,102 @@ class AdminController extends Controller
       'tmp_name' => (string)$file['tmp_name'],
       'name' => $name,
     ];
+  }
+
+  private function uploadLeadDinnerVoucher(string $fieldName, bool $required = true): ?array
+  {
+    $file = $_FILES[$fieldName] ?? null;
+    $error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+
+    if (!$file || !is_array($file) || $error === UPLOAD_ERR_NO_FILE) {
+      if ($required) {
+        throw new RuntimeException('Debes adjuntar el voucher de consumo.');
+      }
+      return null;
+    }
+
+    if ($error !== UPLOAD_ERR_OK) {
+      throw new RuntimeException('No se pudo procesar el voucher adjunto.');
+    }
+
+    $tmp = (string)($file['tmp_name'] ?? '');
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+      throw new RuntimeException('El voucher subido no es valido.');
+    }
+
+    $originalName = (string)($file['name'] ?? 'voucher');
+    $extension = strtolower((string)pathinfo($originalName, PATHINFO_EXTENSION));
+    $allowed = [
+      'jpg' => 'jpg',
+      'jpeg' => 'jpg',
+      'png' => 'png',
+      'webp' => 'webp',
+      'pdf' => 'pdf',
+      'heic' => 'heic',
+      'heif' => 'heif',
+    ];
+    if (!isset($allowed[$extension])) {
+      throw new RuntimeException('El voucher debe ser JPG, PNG, WEBP, HEIC, HEIF o PDF.');
+    }
+
+    $directory = dirname(__DIR__, 2) . '/uploads/leads-cena';
+    if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
+      throw new RuntimeException('No se pudo crear la carpeta para vouchers.');
+    }
+
+    $fileName = 'voucher_' . date('Ymd_His') . '_' . bin2hex(random_bytes(6)) . '.' . $allowed[$extension];
+    $target = $directory . '/' . $fileName;
+    if (!move_uploaded_file($tmp, $target)) {
+      throw new RuntimeException('No se pudo guardar el voucher.');
+    }
+
+    return [
+      'path' => '/uploads/leads-cena/' . $fileName,
+      'original_name' => $originalName,
+      'absolute_path' => $target,
+    ];
+  }
+
+  private function leadDinnerData(array $source): array
+  {
+    $firstName = trim((string)($source['first_name'] ?? ''));
+    $lastName = trim((string)($source['last_name'] ?? ''));
+    $whatsapp = trim((string)($source['whatsapp'] ?? ''));
+    $email = trim((string)($source['email'] ?? ''));
+    $statusId = (int)($source['status_id'] ?? 0);
+    $campaignId = (int)($source['campaign_id'] ?? 0);
+
+    if ($firstName === '' || $lastName === '') {
+      throw new RuntimeException('Debes ingresar nombres y apellidos.');
+    }
+    if ($whatsapp === '') {
+      throw new RuntimeException('Debes ingresar el WhatsApp.');
+    }
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+      throw new RuntimeException('El correo ingresado no es valido.');
+    }
+    if ($statusId <= 0) {
+      throw new RuntimeException('Debes seleccionar un estado.');
+    }
+    $campaign = LeadDinnerCampaign::find($campaignId);
+    if (!$campaign || (int)$campaign['is_active'] !== 1) {
+      throw new RuntimeException('Debes seleccionar una campaña activa.');
+    }
+
+    return compact('firstName', 'lastName', 'whatsapp', 'email', 'statusId', 'campaignId');
+  }
+
+  private function deleteLeadDinnerVoucher(?string $voucherPath): void
+  {
+    $voucherPath = trim((string)$voucherPath);
+    if (!str_starts_with($voucherPath, '/uploads/leads-cena/')) {
+      return;
+    }
+
+    $absolutePath = dirname(__DIR__, 2) . str_replace('/', DIRECTORY_SEPARATOR, $voucherPath);
+    if (is_file($absolutePath)) {
+      unlink($absolutePath);
+    }
   }
 
   private function resolveSalesPeriodMonth(string $fileName, ?string $rawMonth): string
@@ -1215,7 +1312,7 @@ class AdminController extends Controller
     $this->view('admin/lead_dinner_statuses', compact('statuses', 'msg'));
   }
 
-  public function leadDinnerEntries(): void
+  public function leadDinnerCampaigns(): void
   {
     Auth::requireRole('admin');
     LeadDinnerEntry::ensureSchema();
@@ -1226,6 +1323,129 @@ class AdminController extends Controller
       $action = $_POST['action'] ?? '';
 
       try {
+        if ($action === 'create') {
+          LeadDinnerCampaign::create($_POST);
+          $msg = ['type' => 'success', 'text' => 'Campaña creada'];
+        }
+
+        if ($action === 'update') {
+          LeadDinnerCampaign::update((int)($_POST['id'] ?? 0), $_POST);
+          $msg = ['type' => 'success', 'text' => 'Campaña actualizada'];
+        }
+
+        if ($action === 'delete') {
+          LeadDinnerCampaign::delete((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Campaña eliminada'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $campaigns = LeadDinnerCampaign::all();
+    $this->view('admin/lead_dinner_campaigns', compact('campaigns', 'msg'));
+  }
+
+  public function leadDinnerEntries(): void
+  {
+    Auth::requireLogin();
+    if (!Auth::canManageLeadDinner()) {
+      http_response_code(403);
+      exit('403 - Acceso denegado');
+    }
+
+    $limitedLeadAccess = (Auth::user()['role'] ?? '') !== 'admin';
+    LeadDinnerEntry::ensureSchema();
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($limitedLeadAccess && !in_array($action, ['create', 'update'], true)) {
+          throw new RuntimeException('No tienes permiso para realizar esta accion.');
+        }
+
+        if ($action === 'create') {
+          if ($limitedLeadAccess) {
+            $_POST['status_id'] = LeadDinnerStatus::firstActiveId() ?? 0;
+          }
+          $data = $this->leadDinnerData($_POST);
+          $upload = $this->uploadLeadDinnerVoucher('voucher', false);
+
+          try {
+            LeadDinnerEntry::create([
+              'first_name' => $data['firstName'],
+              'last_name' => $data['lastName'],
+              'whatsapp' => $data['whatsapp'],
+              'email' => $data['email'],
+              'voucher_path' => $upload['path'] ?? null,
+              'voucher_original_name' => $upload['original_name'] ?? null,
+              'status_id' => $data['statusId'],
+              'campaign_id' => $data['campaignId'],
+            ]);
+          } catch (Throwable $e) {
+            if ($upload && is_file($upload['absolute_path'])) {
+              unlink($upload['absolute_path']);
+            }
+            throw $e;
+          }
+
+          $msg = ['type' => 'success', 'text' => 'Lead creado'];
+        }
+
+        if ($action === 'update') {
+          $id = (int)($_POST['id'] ?? 0);
+          $current = LeadDinnerEntry::find($id);
+          if (!$current) {
+            throw new RuntimeException('El lead que intentas editar no existe.');
+          }
+
+          if ($limitedLeadAccess) {
+            $_POST['status_id'] = (int)$current['status_id'];
+          }
+          $data = $this->leadDinnerData($_POST);
+          $upload = $this->uploadLeadDinnerVoucher('voucher', false);
+          $voucherPath = $upload['path'] ?? $current['voucher_path'];
+          $voucherOriginalName = $upload['original_name'] ?? $current['voucher_original_name'];
+
+          try {
+            LeadDinnerEntry::update($id, [
+              'first_name' => $data['firstName'],
+              'last_name' => $data['lastName'],
+              'whatsapp' => $data['whatsapp'],
+              'email' => $data['email'],
+              'voucher_path' => $voucherPath,
+              'voucher_original_name' => $voucherOriginalName,
+              'status_id' => $data['statusId'],
+              'campaign_id' => $data['campaignId'],
+            ]);
+          } catch (Throwable $e) {
+            if ($upload && is_file($upload['absolute_path'])) {
+              unlink($upload['absolute_path']);
+            }
+            throw $e;
+          }
+
+          if ($upload) {
+            $this->deleteLeadDinnerVoucher((string)$current['voucher_path']);
+          }
+          $msg = ['type' => 'success', 'text' => 'Lead actualizado'];
+        }
+
+        if ($action === 'delete') {
+          $id = (int)($_POST['id'] ?? 0);
+          $current = LeadDinnerEntry::find($id);
+          if (!$current) {
+            throw new RuntimeException('El lead que intentas eliminar no existe.');
+          }
+
+          LeadDinnerEntry::delete($id);
+          $this->deleteLeadDinnerVoucher((string)$current['voucher_path']);
+          $msg = ['type' => 'warning', 'text' => 'Lead eliminado'];
+        }
+
         if ($action === 'update_status') {
           LeadDinnerEntry::updateStatus((int)($_POST['id'] ?? 0), (int)($_POST['status_id'] ?? 0));
           $msg = ['type' => 'success', 'text' => 'Estado del lead actualizado'];
@@ -1238,8 +1458,17 @@ class AdminController extends Controller
     $statusId = (int)($_GET['status_id'] ?? 0);
     $search = trim((string)($_GET['q'] ?? ''));
     $statuses = LeadDinnerStatus::all();
+    $campaigns = LeadDinnerCampaign::active();
     $rows = LeadDinnerEntry::all($statusId > 0 ? $statusId : null, $search);
 
-    $this->view('admin/lead_dinner_entries', compact('rows', 'statuses', 'statusId', 'search', 'msg'));
+    $this->view('admin/lead_dinner_entries', compact(
+      'rows',
+      'statuses',
+      'campaigns',
+      'statusId',
+      'search',
+      'msg',
+      'limitedLeadAccess'
+    ));
   }
 }

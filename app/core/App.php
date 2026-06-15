@@ -37,6 +37,7 @@ class App {
       '/admin/recipes' => ['AdminController', 'recipes'],
       '/admin/sales' => ['AdminController', 'sales'],
       '/admin/leads-cena' => ['AdminController', 'leadDinnerEntries'],
+      '/admin/leads-cena-campaigns' => ['AdminController', 'leadDinnerCampaigns'],
       '/admin/leads-cena-statuses' => ['AdminController', 'leadDinnerStatuses'],
       '/admin/profile' => ['AdminController', 'profile'],
 
@@ -46,6 +47,7 @@ class App {
 
       '/worker' => ['WorkerController', 'dashboard'],
       '/worker/attendance' => ['WorkerController', 'myAttendance'],
+      '/worker/leads-cena' => ['AdminController', 'leadDinnerEntries'],
       '/worker/payments' => ['WorkerController', 'payments'],
       '/worker/inventory' => ['WorkerController', 'inventory'],
       '/worker/requirements' => ['WorkerController', 'requirements'],

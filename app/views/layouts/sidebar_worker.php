@@ -15,6 +15,10 @@ $workerLinks = [
   ['/worker/tasks', 'Tareas'],
 ];
 
+if (Auth::canManageLeadDinner()) {
+  $workerLinks[] = ['/worker/leads-cena', 'Leads Cena'];
+}
+
 if (Recipe::canWorkerUse($sidebarUser)) {
   $workerLinks[] = ['/worker/recipes', 'Recetario'];
 }

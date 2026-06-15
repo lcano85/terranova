@@ -3,6 +3,7 @@ require_once __DIR__ . '/../models/User.php';
 
 class Auth {
   private const ADMIN_SESSION_TTL = 7200;
+  private const LEAD_DINNER_MANAGER_DOCUMENT = '74581146';
 
   public static function check(): bool {
     self::enforceAdminSessionTtl();
@@ -61,6 +62,15 @@ class Auth {
       http_response_code(403);
       exit('403 - Acceso denegado');
     }
+  }
+
+  public static function canManageLeadDinner(): bool {
+    $u = self::user();
+    return ($u['role'] ?? '') === 'admin'
+      || (
+        ($u['role'] ?? '') === 'worker'
+        && (string)($u['document_number'] ?? '') === self::LEAD_DINNER_MANAGER_DOCUMENT
+      );
   }
 
   private static function enforceAdminSessionTtl(): void {
