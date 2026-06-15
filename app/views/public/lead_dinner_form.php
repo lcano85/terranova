@@ -33,6 +33,15 @@ require_once __DIR__ . '/../../core/Csrf.php';
             <input type="email" class="form-control" name="email" required>
           </div>
           <div class="col-12">
+            <label class="form-label">Campaña</label>
+            <select class="form-select" name="campaign_id" required>
+              <option value="">Selecciona una campaña</option>
+              <?php foreach ($campaigns as $campaign): ?>
+                <option value="<?= (int)$campaign['id'] ?>"><?= Helpers::e($campaign['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="col-12">
             <label class="form-label">Voucher de consumo</label>
             <input type="file" class="form-control" name="voucher" accept="image/*,.pdf,.heic,.heif" required>
             <div class="form-text">Formatos permitidos: JPG, PNG, WEBP, HEIC, HEIF o PDF.</div>

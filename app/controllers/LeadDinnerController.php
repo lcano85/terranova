@@ -4,6 +4,7 @@ require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../core/Csrf.php';
 require_once __DIR__ . '/../models/LeadDinnerEntry.php';
 require_once __DIR__ . '/../models/LeadDinnerStatus.php';
+require_once __DIR__ . '/../models/LeadDinnerCampaign.php';
 
 class LeadDinnerController extends Controller
 {
@@ -107,6 +108,7 @@ class LeadDinnerController extends Controller
         $lastName = trim((string)($_POST['last_name'] ?? ''));
         $whatsapp = trim((string)($_POST['whatsapp'] ?? ''));
         $email = trim((string)($_POST['email'] ?? ''));
+        $campaignId = (int)($_POST['campaign_id'] ?? 0);
 
         if ($firstName === '' || $lastName === '') {
           throw new RuntimeException('Debes ingresar nombres y apellidos.');
@@ -116,6 +118,10 @@ class LeadDinnerController extends Controller
         }
         if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
           throw new RuntimeException('Debes ingresar un correo valido.');
+        }
+        $campaign = LeadDinnerCampaign::find($campaignId);
+        if (!$campaign || (int)$campaign['is_active'] !== 1) {
+          throw new RuntimeException('Debes seleccionar una campaña activa.');
         }
 
         $upload = $this->uploadVoucher();
@@ -132,6 +138,7 @@ class LeadDinnerController extends Controller
           'voucher_path' => $upload['path'],
           'voucher_original_name' => $upload['original_name'],
           'status_id' => $statusId,
+          'campaign_id' => $campaignId,
         ]);
 
         Helpers::redirect('/concurso/cena/gracias');
@@ -140,7 +147,8 @@ class LeadDinnerController extends Controller
       }
     }
 
-    $this->view('public/lead_dinner_form', compact('msg'));
+    $campaigns = LeadDinnerCampaign::active();
+    $this->view('public/lead_dinner_form', compact('msg', 'campaigns'));
   }
 
   public function thankYou(): void
