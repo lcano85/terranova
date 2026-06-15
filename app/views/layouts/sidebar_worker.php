@@ -8,6 +8,7 @@ $sidebarUser = $sidebarBaseUser ? (User::findWithDetails((int)$sidebarBaseUser['
 $workerLinks = [
   ['/worker', 'Dashboard'],
   ['/worker/attendance', 'Mi asistencia'],
+  ['/worker/payments', 'Pagos'],
   ['/worker/inventory', 'Inventario'],
   ['/worker/requirements', 'Requerimientos'],
   ['/worker/activities', 'Actividades'],

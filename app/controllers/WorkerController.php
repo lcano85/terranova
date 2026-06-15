@@ -12,6 +12,7 @@ require_once __DIR__ . '/../models/Activity.php';
 require_once __DIR__ . '/../models/Task.php';
 require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MailNotificationLog.php';
+require_once __DIR__ . '/../models/Payroll.php';
 require_once __DIR__ . '/../core/NotificationMailer.php';
 
 class WorkerController extends Controller {
@@ -281,6 +282,14 @@ class WorkerController extends Controller {
     $user = Auth::user();
     $rows = Attendance::byWorker((int)$user['id'], 120);
     $this->view('worker/my_attendance', compact('user','rows'));
+  }
+
+  public function payments(): void
+  {
+    Auth::requireRole('worker');
+    $user = Auth::user();
+    $rows = Payroll::publishedForWorker((int)$user['id']);
+    $this->view('worker/payments', compact('user', 'rows'));
   }
 
   public function requirements(): void {

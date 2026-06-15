@@ -12,6 +12,20 @@ class Promotion
     return Database::conn()->query($sql)->fetchAll();
   }
 
+  public static function activeSchedule(): array
+  {
+    $sql = "
+      SELECT *
+      FROM promotions
+      WHERE is_active = 1
+        AND weekday BETWEEN 1 AND 6
+        AND shift IN ('morning', 'afternoon')
+      ORDER BY weekday ASC, FIELD(shift, 'morning', 'afternoon') ASC, id DESC
+    ";
+
+    return Database::conn()->query($sql)->fetchAll();
+  }
+
   public static function find(int $id): ?array
   {
     $st = Database::conn()->prepare("SELECT * FROM promotions WHERE id=? LIMIT 1");

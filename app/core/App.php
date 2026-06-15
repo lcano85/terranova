@@ -33,6 +33,7 @@ class App {
       '/admin/payroll' => ['AdminController', 'payroll'],
       '/admin/inventory' => ['AdminController', 'inventory'],
       '/admin/products' => ['AdminController', 'products'],
+      '/admin/costing' => ['AdminController', 'costing'],
       '/admin/recipes' => ['AdminController', 'recipes'],
       '/admin/sales' => ['AdminController', 'sales'],
       '/admin/leads-cena' => ['AdminController', 'leadDinnerEntries'],
@@ -41,9 +42,11 @@ class App {
 
       // Público: ver promoción del día (para la pantalla de marcación)
       '/promotions/today' => ['PromotionsController', 'today'],
+      '/promotions/weekly' => ['PromotionsController', 'weekly'],
 
       '/worker' => ['WorkerController', 'dashboard'],
       '/worker/attendance' => ['WorkerController', 'myAttendance'],
+      '/worker/payments' => ['WorkerController', 'payments'],
       '/worker/inventory' => ['WorkerController', 'inventory'],
       '/worker/requirements' => ['WorkerController', 'requirements'],
       '/worker/activities' => ['WorkerController', 'activities'],

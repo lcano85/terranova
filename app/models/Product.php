@@ -92,6 +92,17 @@ class Product
     return $st->fetchAll();
   }
 
+  public static function activeList(): array
+  {
+    self::ensureSchema();
+    return Database::conn()->query("
+      SELECT id, name, variant, brand, unit_price, cost_price
+      FROM products
+      WHERE is_active=1
+      ORDER BY name ASC
+    ")->fetchAll();
+  }
+
   public static function groupedByCategory(?int $categoryId = null, string $search = ''): array
   {
     $rows = self::byCategory($categoryId, $search);

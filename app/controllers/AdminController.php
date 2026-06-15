@@ -17,6 +17,7 @@ require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
 require_once __DIR__ . '/../models/ProductCategory.php';
 require_once __DIR__ . '/../models/Product.php';
+require_once __DIR__ . '/../models/Costing.php';
 require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MonthlyProductSale.php';
 require_once __DIR__ . '/../models/SalesImportAudit.php';
@@ -820,6 +821,7 @@ class AdminController extends Controller
           'hours_per_day' => $editingPayroll['hours_per_day'],
           'worked_days' => $editingPayroll['worked_days'],
           'late_minutes' => $editingPayroll['late_minutes'],
+          'is_published' => $editingPayroll['is_published'] ?? 0,
           'items' => [
             'type' => array_column($editingPayroll['items'], 'item_type'),
             'concept' => array_column($editingPayroll['items'], 'concept'),
@@ -1035,6 +1037,42 @@ class AdminController extends Controller
     $rows = Product::byCategory($categoryId > 0 ? $categoryId : null, $search);
 
     $this->view('admin/products', compact('msg', 'summary', 'categories', 'grouped', 'rows', 'categoryId', 'search'));
+  }
+
+  public function costing(): void
+  {
+    Auth::requireRole('admin');
+    Costing::ensureSchema();
+    Product::ensureSchema();
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          $id = Costing::create($_POST);
+          $msg = ['type' => 'success', 'text' => 'Costeo registrado #' . $id];
+        }
+
+        if ($action === 'update') {
+          Costing::update((int)($_POST['id'] ?? 0), $_POST);
+          $msg = ['type' => 'success', 'text' => 'Costeo actualizado'];
+        }
+
+        if ($action === 'delete') {
+          Costing::delete((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Costeo eliminado'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $products = Product::activeList();
+    $costings = Costing::all();
+    $this->view('admin/costing', compact('msg', 'products', 'costings'));
   }
 
   public function recipes(): void

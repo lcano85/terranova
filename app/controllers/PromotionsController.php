@@ -5,6 +5,38 @@ require_once __DIR__ . '/../models/Promotion.php';
 
 class PromotionsController extends Controller
 {
+  public function weekly(): void
+  {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $promotions = array_map(static function (array $promo): array {
+      return [
+        'id' => (int)$promo['id'],
+        'weekday' => (int)$promo['weekday'],
+        'shift' => (string)$promo['shift'],
+        'title' => (string)($promo['title'] ?? ''),
+        'content' => (string)($promo['content'] ?? ''),
+      ];
+    }, Promotion::activeSchedule());
+
+    echo json_encode([
+      'ok' => true,
+      'days' => [
+        ['value' => 1, 'label' => Promotion::weekdayLabel(1)],
+        ['value' => 2, 'label' => Promotion::weekdayLabel(2)],
+        ['value' => 3, 'label' => Promotion::weekdayLabel(3)],
+        ['value' => 4, 'label' => Promotion::weekdayLabel(4)],
+        ['value' => 5, 'label' => Promotion::weekdayLabel(5)],
+        ['value' => 6, 'label' => Promotion::weekdayLabel(6)],
+      ],
+      'shifts' => [
+        ['value' => 'morning', 'label' => Promotion::shiftLabel('morning')],
+        ['value' => 'afternoon', 'label' => Promotion::shiftLabel('afternoon')],
+      ],
+      'promotions' => $promotions,
+    ], JSON_UNESCAPED_UNICODE);
+  }
+
   /**
    * Endpoint público para obtener la promoción del día.
    * Responde JSON.
