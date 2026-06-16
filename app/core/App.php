@@ -32,6 +32,7 @@ class App {
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/payroll' => ['AdminController', 'payroll'],
       '/admin/inventory' => ['AdminController', 'inventory'],
+      '/admin/inventory/history-seen' => ['AdminController', 'inventoryHistorySeen'],
       '/admin/products' => ['AdminController', 'products'],
       '/admin/costing' => ['AdminController', 'costing'],
       '/admin/recipes' => ['AdminController', 'recipes'],

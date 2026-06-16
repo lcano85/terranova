@@ -21,7 +21,7 @@ function inventoryHistoryDetail(array $history): string {
     return '-';
   }
 
-  $quantity = rtrim(rtrim(number_format((float)($snapshot['quantity'] ?? 0), 2, '.', ''), '0'), '.');
+  $quantity = (string)(int)($snapshot['quantity'] ?? 0);
   $status = (int)($snapshot['is_active'] ?? 0) === 1 ? 'Activo' : 'Inactivo';
   return trim((string)($snapshot['name'] ?? '')) . ' | ' . $quantity . ' ' . trim((string)($snapshot['unit'] ?? '')) . ' | ' . $status;
 }
@@ -74,10 +74,14 @@ function inventoryHistoryDetail(array $history): string {
       </div>
     <?php endif; ?>
 
+    <div class="accordion" id="inventoryAccordion">
+    <?php $inventoryAccordionIndex = 0; ?>
     <?php foreach ($grouped as $areaName => $items): ?>
       <?php
+      $inventoryAccordionIndex++;
       $totalItemsInArea = count($items);
       $inventoryGroupKey = substr(md5($areaName), 0, 8);
+      $inventoryCollapseId = 'inventoryAreaCollapse' . $inventoryGroupKey;
       $inventoryGroupPagination = Pagination::paginateArray($items, 'inventory_page_' . $inventoryGroupKey, 'inventory_per_page_' . $inventoryGroupKey);
       $items = $inventoryGroupPagination['rows'];
       $inventoryGroupPaginationMeta = $inventoryGroupPagination['meta'];
@@ -89,8 +93,23 @@ function inventoryHistoryDetail(array $history): string {
               <h5 class="mb-0"><?= Helpers::e($areaName) ?></h5>
               <div class="text-muted small"><?= $totalItemsInArea ?> item(s) registrados</div>
             </div>
+            <button
+              class="btn btn-sm btn-outline-secondary"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#<?= Helpers::e($inventoryCollapseId) ?>"
+              aria-expanded="<?= $inventoryAccordionIndex === 1 ? 'true' : 'false' ?>"
+              aria-controls="<?= Helpers::e($inventoryCollapseId) ?>"
+            >
+              Ver bloque
+            </button>
           </div>
 
+          <div
+            id="<?= Helpers::e($inventoryCollapseId) ?>"
+            class="collapse <?= $inventoryAccordionIndex === 1 ? 'show' : '' ?>"
+            data-bs-parent="#inventoryAccordion"
+          >
           <div class="table-responsive">
             <table class="table align-middle">
               <thead>
@@ -108,12 +127,13 @@ function inventoryHistoryDetail(array $history): string {
               </thead>
               <tbody>
                 <?php foreach ($items as $item): ?>
-                  <tr>
+                  <?php $unseenCount = (int)($unseenInventoryUpdates[(int)$item['id']] ?? 0); ?>
+                  <tr class="<?= $unseenCount > 0 ? 'table-warning' : '' ?>" data-inventory-row="<?= (int)$item['id'] ?>">
                     <td><?= (int)$item['id'] ?></td>
                     <td><?= Helpers::e($item['first_name'] . ' ' . $item['last_name']) ?></td>
                     <td><?= Helpers::e($item['document_number']) ?></td>
                     <td><?= Helpers::e($item['name']) ?></td>
-                    <td><?= Helpers::e(rtrim(rtrim(number_format((float)$item['quantity'], 2, '.', ''), '0'), '.')) ?></td>
+                    <td><?= (int)$item['quantity'] ?></td>
                     <td><?= Helpers::e($item['unit']) ?></td>
                     <td>
                       <span class="badge text-bg-<?= (int)$item['is_active'] === 1 ? 'success' : 'secondary' ?>">
@@ -125,8 +145,23 @@ function inventoryHistoryDetail(array $history): string {
                       <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#modalEditInventory<?= (int)$item['id'] ?>">
                         Editar
                       </button>
-                      <button class="btn btn-sm btn-outline-primary mt-1" type="button" data-bs-toggle="modal" data-bs-target="#modalHistoryInventory<?= (int)$item['id'] ?>">
-                        Historial
+                      <button
+                        class="btn btn-sm <?= $unseenCount > 0 ? 'btn-warning' : 'btn-outline-primary' ?> mt-1 position-relative"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#modalHistoryInventory<?= (int)$item['id'] ?>"
+                        data-history-item-id="<?= (int)$item['id'] ?>"
+                      >
+                        <?= $unseenCount > 0 ? 'Actualizado' : 'Historial' ?>
+                        <?php if ($unseenCount > 0): ?>
+                          <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill text-bg-danger" data-history-badge="<?= (int)$item['id'] ?>">
+                            <?= $unseenCount ?>
+                            <span class="visually-hidden">actualizaciones pendientes</span>
+                          </span>
+                        <?php endif; ?>
+                      </button>
+                      <button class="btn btn-sm btn-outline-danger mt-1" type="button" data-bs-toggle="modal" data-bs-target="#modalDeleteInventory<?= (int)$item['id'] ?>">
+                        Eliminar
                       </button>
                     </td>
                   </tr>
@@ -179,7 +214,7 @@ function inventoryHistoryDetail(array $history): string {
                         </div>
                         <div class="col-md-6">
                           <label class="form-label">Cantidad</label>
-                          <input type="number" step="0.01" min="0" class="form-control" name="quantity" value="<?= Helpers::e($item['quantity']) ?>" required>
+                          <input type="number" step="1" min="0" class="form-control" name="quantity" value="<?= (int)$item['quantity'] ?>" required>
                         </div>
                         <div class="col-md-6">
                           <label class="form-label">Unidad</label>
@@ -234,8 +269,17 @@ function inventoryHistoryDetail(array $history): string {
                             </tr>
                           </thead>
                           <tbody>
+                            <?php $highlightedUnseenUpdate = false; ?>
                             <?php foreach ($historyRows as $history): ?>
-                              <tr>
+                              <?php
+                              $isUnseenWorkerUpdate = !$highlightedUnseenUpdate
+                                && (string)$history['action'] === 'update'
+                                && empty($history['admin_seen_at']);
+                              if ($isUnseenWorkerUpdate) {
+                                $highlightedUnseenUpdate = true;
+                              }
+                              ?>
+                              <tr class="<?= $isUnseenWorkerUpdate ? 'table-warning' : '' ?>" data-history-row="<?= $isUnseenWorkerUpdate ? (int)$item['id'] : '' ?>">
                                 <td><?= Helpers::e(Helpers::formatDateTime($history['created_at'])) ?></td>
                                 <td><?= Helpers::e(inventoryActionLabel((string)$history['action'])) ?></td>
                                 <td><?= Helpers::e(trim(($history['first_name'] ?? '') . ' ' . ($history['last_name'] ?? '')) ?: '-') ?></td>
@@ -251,12 +295,42 @@ function inventoryHistoryDetail(array $history): string {
                 </div>
               </div>
             </div>
+
+            <div class="modal fade" id="modalDeleteInventory<?= (int)$item['id'] ?>" tabindex="-1">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <form method="POST">
+                    <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
+
+                    <div class="modal-header">
+                      <h5 class="modal-title">Eliminar item de inventario</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                      <p class="mb-1">Estas seguro de eliminar este item?</p>
+                      <div class="fw-semibold"><?= Helpers::e($item['name']) ?></div>
+                      <div class="text-muted small">Esta accion eliminara tambien su historial.</div>
+                    </div>
+
+                    <div class="modal-footer">
+                      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                      <button class="btn btn-danger">Eliminar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
           <?php endforeach; ?>
 
           <?= Pagination::render($inventoryGroupPaginationMeta) ?>
+          </div>
         </div>
       </div>
     <?php endforeach; ?>
+    </div>
 
     <div class="modal fade" id="modalCreateInventory" tabindex="-1">
       <div class="modal-dialog">
@@ -298,7 +372,7 @@ function inventoryHistoryDetail(array $history): string {
                 </div>
                 <div class="col-md-6">
                   <label class="form-label">Cantidad</label>
-                  <input type="number" step="0.01" min="0" class="form-control" name="quantity" required>
+                  <input type="number" step="1" min="0" class="form-control" name="quantity" required>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label">Unidad</label>
@@ -320,4 +394,52 @@ function inventoryHistoryDetail(array $history): string {
     </div>
   </div>
 </div>
+<script>
+(() => {
+  const csrfToken = <?= json_encode(Csrf::token()) ?>;
+
+  document.querySelectorAll('[data-history-item-id]').forEach((button) => {
+    const modalSelector = button.getAttribute('data-bs-target');
+    const itemId = button.getAttribute('data-history-item-id');
+    const modal = modalSelector ? document.querySelector(modalSelector) : null;
+    if (!modal || !itemId) return;
+
+    modal.addEventListener('shown.bs.modal', async () => {
+      const badge = document.querySelector(`[data-history-badge="${itemId}"]`);
+      if (!badge) return;
+
+      const formData = new FormData();
+      formData.append('_csrf', csrfToken);
+      formData.append('item_id', itemId);
+
+      try {
+        const response = await fetch('/admin/inventory/history-seen', {
+          method: 'POST',
+          headers: { 'Accept': 'application/json' },
+          body: formData
+        });
+        if (response.ok) {
+          badge.remove();
+          button.classList.remove('btn-warning');
+          button.classList.add('btn-outline-primary');
+          button.childNodes.forEach((node) => {
+            if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '') {
+              node.textContent = 'Historial';
+            }
+          });
+          document.querySelectorAll(`[data-inventory-row="${itemId}"]`).forEach((row) => {
+            row.classList.remove('table-warning');
+          });
+          modal.querySelectorAll(`[data-history-row="${itemId}"]`).forEach((row) => {
+            row.classList.remove('table-warning');
+            row.removeAttribute('data-history-row');
+          });
+        }
+      } catch (error) {
+        // Si falla la marca de revision, el indicador se conserva para el proximo ingreso.
+      }
+    }, { once: true });
+  });
+})();
+</script>
 <?php require __DIR__ . '/../layouts/footer.php'; ?>
