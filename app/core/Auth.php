@@ -73,6 +73,15 @@ class Auth {
       );
   }
 
+  public static function canManageBeverages(): bool {
+    $u = self::user();
+    return ($u['role'] ?? '') === 'admin'
+      || (
+        ($u['role'] ?? '') === 'worker'
+        && (string)($u['document_number'] ?? '') === self::LEAD_DINNER_MANAGER_DOCUMENT
+      );
+  }
+
   private static function enforceAdminSessionTtl(): void {
     $u = $_SESSION['user'] ?? null;
     if (($u['role'] ?? '') !== 'admin') {
