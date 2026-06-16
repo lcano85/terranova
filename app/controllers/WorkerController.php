@@ -525,7 +525,8 @@ class WorkerController extends Controller {
         }
 
         $name = trim((string)($_POST['name'] ?? ''));
-        $quantity = (float)($_POST['quantity'] ?? 0);
+        $quantityRaw = trim((string)($_POST['quantity'] ?? ''));
+        $quantity = ctype_digit($quantityRaw) ? (int)$quantityRaw : -1;
         $unit = trim((string)($_POST['unit'] ?? ''));
         $notes = trim((string)($_POST['notes'] ?? ''));
 
@@ -534,7 +535,7 @@ class WorkerController extends Controller {
             throw new RuntimeException('El nombre del item es obligatorio');
           }
           if ($quantity < 0) {
-            throw new RuntimeException('La cantidad no puede ser negativa');
+            throw new RuntimeException('La cantidad debe ser un numero entero');
           }
           if ($unit === '') {
             throw new RuntimeException('La unidad es obligatoria');

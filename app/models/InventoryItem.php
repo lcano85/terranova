@@ -26,6 +26,15 @@ class InventoryItem
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
 
+    $seenColumn = Database::conn()->query("SHOW COLUMNS FROM inventory_item_history LIKE 'admin_seen_at'")->fetch();
+    if (!$seenColumn) {
+      Database::conn()->exec("
+        ALTER TABLE inventory_item_history
+        ADD COLUMN admin_seen_at DATETIME NULL AFTER created_at,
+        ADD INDEX idx_inventory_item_history_seen (admin_seen_at)
+      ");
+    }
+
     self::$schemaEnsured = true;
   }
 
@@ -197,6 +206,73 @@ class InventoryItem
       $grouped[(int)$row['inventory_item_id']][] = $row;
     }
     return $grouped;
+  }
+
+  public static function unseenWorkerUpdateCounts(array $itemIds): array
+  {
+    self::ensureSchema();
+    $itemIds = array_values(array_unique(array_filter(array_map('intval', $itemIds))));
+    if (empty($itemIds)) {
+      return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($itemIds), '?'));
+    $st = Database::conn()->prepare("
+      SELECT inventory_item_id, COUNT(*) AS total
+      FROM inventory_item_history
+      WHERE inventory_item_id IN ($placeholders)
+        AND action = 'update'
+        AND admin_seen_at IS NULL
+      GROUP BY inventory_item_id
+    ");
+    $st->execute($itemIds);
+
+    $counts = [];
+    foreach ($st->fetchAll() as $row) {
+      $counts[(int)$row['inventory_item_id']] = (int)$row['total'];
+    }
+    return $counts;
+  }
+
+  public static function markHistorySeenByAdmin(int $itemId): void
+  {
+    self::ensureSchema();
+    $st = Database::conn()->prepare("
+      UPDATE inventory_item_history
+      SET admin_seen_at = NOW()
+      WHERE inventory_item_id = ?
+        AND action = 'update'
+        AND admin_seen_at IS NULL
+    ");
+    $st->execute([$itemId]);
+  }
+
+  public static function deleteByAdmin(int $id, ?int $actorUserId = null): void
+  {
+    self::ensureSchema();
+    $before = self::findRaw($id);
+    if (!$before) {
+      throw new RuntimeException('El item de inventario no existe.');
+    }
+
+    $pdo = Database::conn();
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) {
+      $pdo->beginTransaction();
+    }
+    try {
+      self::logChange($id, 'delete', $actorUserId, 'admin', $before, null);
+      $pdo->prepare("DELETE FROM inventory_item_history WHERE inventory_item_id=?")->execute([$id]);
+      $pdo->prepare("DELETE FROM inventory_items WHERE id=?")->execute([$id]);
+      if ($ownsTransaction) {
+        $pdo->commit();
+      }
+    } catch (Throwable $e) {
+      if ($ownsTransaction && $pdo->inTransaction()) {
+        $pdo->rollBack();
+      }
+      throw $e;
+    }
   }
 
   private static function findRaw(int $id, ?int $userId = null): ?array

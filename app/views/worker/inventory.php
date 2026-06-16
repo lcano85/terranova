@@ -21,7 +21,7 @@ function inventoryHistoryDetail(array $history): string {
     return '-';
   }
 
-  $quantity = rtrim(rtrim(number_format((float)($snapshot['quantity'] ?? 0), 2, '.', ''), '0'), '.');
+  $quantity = (string)(int)($snapshot['quantity'] ?? 0);
   $status = (int)($snapshot['is_active'] ?? 0) === 1 ? 'Activo' : 'Inactivo';
   return trim((string)($snapshot['name'] ?? '')) . ' | ' . $quantity . ' ' . trim((string)($snapshot['unit'] ?? '')) . ' | ' . $status;
 }
@@ -73,7 +73,7 @@ $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
               <tr>
                 <td><?= (int)$r['id'] ?></td>
                 <td><?= Helpers::e($r['name']) ?></td>
-                <td><?= Helpers::e(rtrim(rtrim(number_format((float)$r['quantity'], 2, '.', ''), '0'), '.')) ?></td>
+                <td><?= (int)$r['quantity'] ?></td>
                 <td><?= Helpers::e($r['unit']) ?></td>
                 <td>
                   <span class="badge text-bg-<?= (int)$r['is_active'] === 1 ? 'success' : 'secondary' ?>">
@@ -137,7 +137,7 @@ $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
                     </div>
                     <div class="col-md-6">
                       <label class="form-label">Cantidad</label>
-                      <input type="number" step="0.01" min="0" class="form-control" name="quantity" value="<?= Helpers::e($r['quantity']) ?>" required>
+                      <input type="number" step="1" min="0" class="form-control" name="quantity" value="<?= (int)$r['quantity'] ?>" required>
                     </div>
                     <div class="col-md-6">
                       <label class="form-label">Unidad</label>
@@ -229,7 +229,7 @@ $workerInventoryPaginationMeta = $workerInventoryPagination['meta'];
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Cantidad</label>
-                    <input type="number" step="0.01" min="0" class="form-control" name="quantity" required>
+                    <input type="number" step="1" min="0" class="form-control" name="quantity" required>
                   </div>
                   <div class="col-md-6">
                     <label class="form-label">Unidad</label>

@@ -973,7 +973,8 @@ class AdminController extends Controller
         $userId = (int)($_POST['user_id'] ?? 0);
         $itemAreaId = (int)($_POST['area_id'] ?? 0);
         $name = trim((string)($_POST['name'] ?? ''));
-        $quantity = (float)($_POST['quantity'] ?? 0);
+        $quantityRaw = trim((string)($_POST['quantity'] ?? ''));
+        $quantity = ctype_digit($quantityRaw) ? (int)$quantityRaw : -1;
         $unit = trim((string)($_POST['unit'] ?? ''));
         $notes = trim((string)($_POST['notes'] ?? ''));
         $isActive = isset($_POST['is_active']) ? 1 : 0;
@@ -990,7 +991,7 @@ class AdminController extends Controller
             throw new RuntimeException('El nombre del item es obligatorio.');
           }
           if ($quantity < 0) {
-            throw new RuntimeException('La cantidad no puede ser negativa.');
+            throw new RuntimeException('La cantidad debe ser un numero entero.');
           }
           if ($unit === '') {
             throw new RuntimeException('La unidad es obligatoria.');
@@ -1026,6 +1027,11 @@ class AdminController extends Controller
           );
           $msg = ['type' => 'success', 'text' => 'Item de inventario actualizado'];
         }
+
+        if ($action === 'delete') {
+          InventoryItem::deleteByAdmin((int)($_POST['id'] ?? 0), (int)(Auth::user()['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Item de inventario eliminado'];
+        }
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
@@ -1035,13 +1041,22 @@ class AdminController extends Controller
     $workers = User::activeWorkers();
     $rows = InventoryItem::forAdmin($areaId > 0 ? $areaId : null, $statusFilter);
     $inventoryHistory = InventoryItem::historyForItems(array_column($rows, 'id'));
+    $unseenInventoryUpdates = InventoryItem::unseenWorkerUpdateCounts(array_column($rows, 'id'));
 
     $grouped = [];
     foreach ($rows as $row) {
       $grouped[$row['area_name']][] = $row;
     }
 
-    $this->view('admin/inventory', compact('areas', 'workers', 'rows', 'grouped', 'inventoryHistory', 'areaId', 'status', 'msg'));
+    $this->view('admin/inventory', compact('areas', 'workers', 'rows', 'grouped', 'inventoryHistory', 'unseenInventoryUpdates', 'areaId', 'status', 'msg'));
+  }
+
+  public function inventoryHistorySeen(): void
+  {
+    Auth::requireRole('admin');
+    Csrf::check();
+    InventoryItem::markHistorySeenByAdmin((int)($_POST['item_id'] ?? 0));
+    $this->jsonResponse(['ok' => true]);
   }
 
   public function products(): void
