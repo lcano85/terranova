@@ -19,6 +19,10 @@ if (Auth::canManageLeadDinner()) {
   $workerLinks[] = ['/worker/leads-cena', 'Leads Cena'];
 }
 
+if (Auth::canManageBeverages()) {
+  $workerLinks[] = ['/worker/beverages', 'Control de bebidas'];
+}
+
 if (Recipe::canWorkerUse($sidebarUser)) {
   $workerLinks[] = ['/worker/recipes', 'Recetario'];
 }

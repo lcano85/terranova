@@ -15,6 +15,7 @@ require_once __DIR__ . '/../models/Task.php';
 require_once __DIR__ . '/../models/WorkerPayRate.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
+require_once __DIR__ . '/../models/BeverageControl.php';
 require_once __DIR__ . '/../models/ProductCategory.php';
 require_once __DIR__ . '/../models/Product.php';
 require_once __DIR__ . '/../models/Costing.php';
@@ -1057,6 +1058,74 @@ class AdminController extends Controller
     Csrf::check();
     InventoryItem::markHistorySeenByAdmin((int)($_POST['item_id'] ?? 0));
     $this->jsonResponse(['ok' => true]);
+  }
+
+  public function beverages(): void
+  {
+    Auth::requireLogin();
+    if (!Auth::canManageBeverages()) {
+      http_response_code(403);
+      exit('403 - Acceso denegado');
+    }
+
+    $limitedBeverageAccess = (Auth::user()['role'] ?? '') !== 'admin';
+    BeverageControl::ensureSchema();
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($limitedBeverageAccess && in_array($action, ['create_product', 'update_product', 'delete_product', 'delete'], true)) {
+          throw new RuntimeException('No tienes permiso para realizar esta accion.');
+        }
+
+        if ($action === 'create_product') {
+          BeverageControl::createProduct($_POST);
+          $msg = ['type' => 'success', 'text' => 'Bebida creada'];
+        }
+
+        if ($action === 'update_product') {
+          BeverageControl::updateProduct((int)($_POST['id'] ?? 0), $_POST);
+          $msg = ['type' => 'success', 'text' => 'Bebida actualizada'];
+        }
+
+        if ($action === 'delete_product') {
+          BeverageControl::deleteProduct((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Bebida eliminada'];
+        }
+
+        if ($action === 'create') {
+          BeverageControl::createEntry($_POST);
+          $msg = ['type' => 'success', 'text' => 'Stock registrado'];
+        }
+
+        if ($action === 'update') {
+          BeverageControl::updateEntry((int)($_POST['id'] ?? 0), $_POST);
+          $msg = ['type' => 'success', 'text' => 'Stock actualizado'];
+        }
+
+        if ($action === 'delete') {
+          BeverageControl::deleteEntry((int)($_POST['id'] ?? 0));
+          $msg = ['type' => 'warning', 'text' => 'Stock eliminado'];
+        }
+
+        if ($action === 'sale') {
+          BeverageControl::registerSale((int)($_POST['id'] ?? 0), $_POST);
+          $msg = ['type' => 'success', 'text' => 'Venta registrada'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $allProducts = BeverageControl::products(false);
+    $products = BeverageControl::products(true);
+    $entries = BeverageControl::entries();
+    $salesByEntry = BeverageControl::salesByEntryIds(array_column($entries, 'id'));
+
+    $this->view('admin/beverages', compact('allProducts', 'products', 'entries', 'salesByEntry', 'limitedBeverageAccess', 'msg'));
   }
 
   public function products(): void

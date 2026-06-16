@@ -10,6 +10,7 @@ $adminLinks = [
   ['/admin/activities', 'Actividades'],
   ['/admin/tasks', 'Gestion de tareas'],
   ['/admin/inventory', 'Inventario'],
+  ['/admin/beverages', 'Control de bebidas'],
   ['/admin/products', 'Productos'],
   ['/admin/costing', 'Costeo'],
   ['/admin/recipes', 'Recetario'],
