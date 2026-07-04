@@ -38,7 +38,10 @@ $auditIssuesPaginationMeta = $auditIssuesPagination['meta'];
         <h3 class="mb-0">Ventas mensuales</h3>
         <div class="text-muted small">Importa el Excel de ventas del mes y revisa productos mas vendidos en general o filtrados por categoria.</div>
       </div>
-      <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalImportSales">Importar ventas</button>
+      <div class="btn-group">
+        <a class="btn btn-outline-primary" href="/admin/sales/statistics">Estadisticas</a>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalImportSales">Importar ventas</button>
+      </div>
     </div>
 
     <?php if (!empty($msg)): ?>
@@ -183,7 +186,8 @@ $auditIssuesPaginationMeta = $auditIssuesPagination['meta'];
                     <th>Producto</th>
                     <th>Categoria</th>
                     <th>Cantidad</th>
-                    <th>Monto</th>
+                    <th>Precio unitario</th>
+                    <th>Venta total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -193,11 +197,12 @@ $auditIssuesPaginationMeta = $auditIssuesPagination['meta'];
                       <td><?= Helpers::e($row['name']) ?></td>
                       <td><?= Helpers::e($row['category_name'] ?: 'Sin categoria') ?></td>
                       <td><?= salesNumber($row['units_sold']) ?></td>
+                      <td><?= salesMoney($row['unit_price']) ?></td>
                       <td><?= salesMoney($row['total_amount']) ?></td>
                     </tr>
                   <?php endforeach; ?>
                   <?php if (empty($topProducts)): ?>
-                    <tr><td colspan="5" class="text-muted">No hay datos para este mes.</td></tr>
+                    <tr><td colspan="6" class="text-muted">No hay datos para este mes.</td></tr>
                   <?php endif; ?>
                 </tbody>
               </table>
@@ -261,7 +266,8 @@ $auditIssuesPaginationMeta = $auditIssuesPagination['meta'];
                 <th>Producto</th>
                 <th>Categoria</th>
                 <th>Cantidad</th>
-                <th>Monto</th>
+                <th>Precio unitario</th>
+                <th>Venta total</th>
               </tr>
             </thead>
             <tbody>
@@ -271,11 +277,12 @@ $auditIssuesPaginationMeta = $auditIssuesPagination['meta'];
                   <td><?= Helpers::e($row['name']) ?></td>
                   <td><?= Helpers::e($row['category_name'] ?: 'Sin categoria') ?></td>
                   <td><?= salesNumber($row['units_sold']) ?></td>
+                  <td><?= salesMoney($row['unit_price']) ?></td>
                   <td><?= salesMoney($row['total_amount']) ?></td>
                 </tr>
               <?php endforeach; ?>
               <?php if (empty($topByCategory)): ?>
-                <tr><td colspan="5" class="text-muted">No hay datos para el filtro seleccionado.</td></tr>
+                <tr><td colspan="6" class="text-muted">No hay datos para el filtro seleccionado.</td></tr>
               <?php endif; ?>
             </tbody>
           </table>

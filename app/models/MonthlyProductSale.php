@@ -160,6 +160,64 @@ class MonthlyProductSale
     ")->fetchAll();
   }
 
+  public static function availableYears(): array
+  {
+    self::ensureSchema();
+    return Database::conn()->query("
+      SELECT YEAR(period_month) AS year,
+             COUNT(DISTINCT MONTH(period_month)) AS months_count
+      FROM monthly_product_sales
+      GROUP BY YEAR(period_month)
+      ORDER BY year DESC
+    ")->fetchAll();
+  }
+
+  public static function monthlyTotalsForYear(int $year): array
+  {
+    self::ensureSchema();
+    $st = Database::conn()->prepare("
+      SELECT MONTH(period_month) AS month_number,
+             SUM(units_sold) AS units_sold,
+             SUM(total_amount) AS total_amount
+      FROM monthly_product_sales
+      WHERE YEAR(period_month)=?
+      GROUP BY MONTH(period_month)
+      ORDER BY month_number
+    ");
+    $st->execute([$year]);
+    return $st->fetchAll();
+  }
+
+  public static function productMonthlyForYear(int $year, ?int $categoryId = null): array
+  {
+    self::ensureSchema();
+    $sql = "
+      SELECT p.id AS product_id,
+             p.name AS product_name,
+             p.category_id,
+             COALESCE(pc.name, 'Sin categoria') AS category_name,
+             MONTH(mps.period_month) AS month_number,
+             SUM(mps.units_sold) AS units_sold,
+             SUM(mps.total_amount) AS total_amount
+      FROM monthly_product_sales mps
+      JOIN products p ON p.id=mps.product_id
+      LEFT JOIN product_categories pc ON pc.id=p.category_id
+      WHERE YEAR(mps.period_month)=?
+    ";
+    $params = [$year];
+    if ($categoryId !== null) {
+      $sql .= " AND p.category_id=?";
+      $params[] = $categoryId;
+    }
+    $sql .= "
+      GROUP BY p.id, p.name, p.category_id, pc.name, MONTH(mps.period_month)
+      ORDER BY category_name, p.name, month_number
+    ";
+    $st = Database::conn()->prepare($sql);
+    $st->execute($params);
+    return $st->fetchAll();
+  }
+
   public static function overview(string $periodMonth, ?int $categoryId = null): array
   {
     self::ensureSchema();
@@ -196,6 +254,7 @@ class MonthlyProductSale
         p.name,
         pc.name AS category_name,
         SUM(mps.units_sold) AS units_sold,
+        MAX(mps.unit_price) AS unit_price,
         SUM(mps.total_amount) AS total_amount
       FROM monthly_product_sales mps
       JOIN products p ON p.id = mps.product_id
