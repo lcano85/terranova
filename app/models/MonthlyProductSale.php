@@ -81,9 +81,8 @@ class MonthlyProductSale
         $details = '';
 
         if ($derivedTotal > 0 && abs($rawTotal - $derivedTotal) > 0.05) {
-          $chosenTotal = $derivedTotal;
           $issueType = $rawTotal == 0.0 ? 'raw_total_zero_formula_mismatch' : 'raw_total_mismatch';
-          $details = 'Se reemplazo VENTA TOTAL por UNIDADES * PRECIO UNITARIO por diferencia detectada en el archivo.';
+          $details = 'VENTA TOTAL difiere de UNIDADES * PRECIO UNITARIO. Se conserva VENTA TOTAL como valor oficial del archivo.';
         }
 
         $productId = Product::firstOrCreateFromSalesRow($row);
