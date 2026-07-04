@@ -39,7 +39,15 @@ class XlsxReader
         }
 
         ksort($row);
-        $rows[] = array_values($row);
+        // Preserve empty cells between populated columns. Collapsing the sparse
+        // indexes shifts every value to the left (for example when columns B/C
+        // are blank), associating values with the wrong Excel headers.
+        $lastColumn = max(array_keys($row));
+        $denseRow = array_fill(0, $lastColumn + 1, '');
+        foreach ($row as $column => $value) {
+          $denseRow[$column] = $value;
+        }
+        $rows[] = $denseRow;
       }
 
       return $rows;

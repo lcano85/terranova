@@ -236,6 +236,22 @@ class AdminController extends Controller
   private function importMonthlySales(array $upload, ?string $rawMonth): array
   {
     $rows = $this->spreadsheetRowsToAssoc(XlsxReader::rows($upload['tmp_name']));
+    $requiredColumns = ['PRODUCTO', 'CATEGORIA', 'UNIDADES', 'PRECIO UNITARIO', 'VENTA TOTAL'];
+    $firstRow = $rows[0] ?? [];
+    $missingColumns = array_values(array_filter(
+      $requiredColumns,
+      static fn(string $column): bool => !array_key_exists($column, $firstRow)
+    ));
+    if ($missingColumns) {
+      throw new RuntimeException('Faltan columnas obligatorias: ' . implode(', ', $missingColumns) . '.');
+    }
+
+    foreach ($rows as $index => $row) {
+      if (trim((string)($row['PRODUCTO'] ?? '')) !== '' && trim((string)($row['CATEGORIA'] ?? '')) === '') {
+        throw new RuntimeException('La categoria es obligatoria para el producto de la fila ' . ($index + 2) . '.');
+      }
+    }
+
     $periodMonth = $this->resolveSalesPeriodMonth($upload['name'], $rawMonth);
     $result = MonthlyProductSale::replaceMonthFromRows($periodMonth, $rows, $upload['name']);
 
@@ -1359,6 +1375,35 @@ class AdminController extends Controller
       'latestAudit',
       'auditIssues',
       'recentAudits'
+    ));
+  }
+
+  public function salesStatistics(): void
+  {
+    Auth::requireRole('admin');
+    MonthlyProductSale::ensureSchema();
+
+    $years = MonthlyProductSale::availableYears();
+    $selectedYear = (int)($_GET['year'] ?? 0);
+    if ($selectedYear <= 0) {
+      $selectedYear = !empty($years) ? (int)$years[0]['year'] : (int)date('Y');
+    }
+
+    $categoryId = (int)($_GET['category_id'] ?? 0);
+    $categories = ProductCategory::all();
+    $monthlyTotals = MonthlyProductSale::monthlyTotalsForYear($selectedYear);
+    $productMonthlyRows = MonthlyProductSale::productMonthlyForYear(
+      $selectedYear,
+      $categoryId > 0 ? $categoryId : null
+    );
+
+    $this->view('admin/sales_statistics', compact(
+      'years',
+      'selectedYear',
+      'categoryId',
+      'categories',
+      'monthlyTotals',
+      'productMonthlyRows'
     ));
   }
 

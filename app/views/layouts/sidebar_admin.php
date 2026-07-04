@@ -15,6 +15,7 @@ $adminLinks = [
   ['/admin/costing', 'Costeo'],
   ['/admin/recipes', 'Recetario'],
   ['/admin/sales', 'Ventas'],
+  ['/admin/sales/statistics', 'Ventas - Estadisticas'],
   ['/admin/leads-cena', 'Leads Cena'],
   ['/admin/leads-cena-campaigns', 'Campañas'],
   ['/admin/leads-cena-statuses', 'Estados Leads Cena'],
