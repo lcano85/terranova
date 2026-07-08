@@ -7,6 +7,8 @@ $adminLinks = [
   ['/admin/areas', 'Areas'],
   ['/admin/purchase-areas', 'Areas de compras'],
   ['/admin/requirements', 'Requerimientos'],
+  ['/admin/supplies', 'Insumos'],
+  ['/admin/unit-measures', 'Unidades de medida'],
   ['/admin/activities', 'Actividades'],
   ['/admin/tasks', 'Gestion de tareas'],
   ['/admin/inventory', 'Inventario'],

@@ -65,6 +65,7 @@ class WorkerController extends Controller {
       <p><strong>Area del trabajador:</strong> ' . Helpers::e((string)($weeklyDetail['worker_area_name'] ?? '-')) . '</p>
       <p><strong>Semana:</strong> ' . Helpers::e(date('d/m/Y', strtotime($weeklyDetail['week_start']))) . '</p>
       <p><strong>Bloque semanal registrado:</strong></p>
+      <p style="color:#666;font-size:13px;">Formato: producto - cantidad unidad de medida.</p>
       ' . $groupsHtml . '
     ';
 
@@ -75,6 +76,7 @@ class WorkerController extends Controller {
       'Area del trabajador: ' . ($weeklyDetail['worker_area_name'] ?: '-') . "\n" .
       'Semana: ' . date('d/m/Y', strtotime($weeklyDetail['week_start'])) . "\n\n" .
       "Bloque semanal registrado:\n" .
+      "Formato: producto - cantidad unidad de medida.\n" .
       $groupsText;
 
     $logId = MailNotificationLog::create('requirement_created', $recipients, $subject, $requirementId);
@@ -297,11 +299,13 @@ class WorkerController extends Controller {
 
     $base = Auth::user();
     $user = User::findWithDetails((int)$base['id']) ?: $base;
-    $msg = null;
-    $purchaseAreas = PurchaseArea::active();
-    $defaultDate = Requirement::nextAllowedDate();
-    $selectedPurchaseAreaId = 0;
-    $formItems = ['', ''];
+      $msg = null;
+      $purchaseAreas = PurchaseArea::active();
+      $supplies = Supply::activeForRequirements();
+      $unitMeasures = UnitMeasure::active();
+      $defaultDate = Requirement::nextAllowedDate();
+      $selectedPurchaseAreaId = 0;
+      $formItems = [];
 
     if (Helpers::isPost()) {
       Csrf::check();
@@ -329,15 +333,18 @@ class WorkerController extends Controller {
         }
 
         if (in_array($action, ['save_draft', 'send'], true)) {
-          $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
-          $requiredDate = trim((string)($_POST['required_date'] ?? ''));
-          $itemsRaw = $_POST['items'] ?? [];
-          $selectedPurchaseAreaId = $purchaseAreaId;
-          $defaultDate = $requiredDate !== '' ? $requiredDate : $defaultDate;
+            $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
+            $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+            $itemsRaw = (array)($_POST['items'] ?? []);
+            $supplyIdsRaw = (array)($_POST['supply_ids'] ?? []);
+            $quantitiesRaw = (array)($_POST['quantities'] ?? []);
+            $unitMeasureIdsRaw = (array)($_POST['unit_measure_ids'] ?? []);
+            $selectedPurchaseAreaId = $purchaseAreaId;
+            $defaultDate = $requiredDate !== '' ? $requiredDate : $defaultDate;
 
-          $sanitized = Requirement::sanitizeItems((array)$itemsRaw);
-          $items = $sanitized['items'];
-          $formItems = !empty($items) ? $items : ['', ''];
+            $sanitized = Requirement::sanitizeStructuredItems($itemsRaw, $supplyIdsRaw, $quantitiesRaw, $unitMeasureIdsRaw, $purchaseAreaId);
+            $items = $sanitized['items'];
+            $formItems = $items;
 
           if ($purchaseAreaId <= 0) {
             throw new RuntimeException('Debes seleccionar un area de compra');
@@ -366,7 +373,7 @@ class WorkerController extends Controller {
             Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items, 'draft');
             $msg = ['type' => 'success', 'text' => 'Requerimiento guardado como borrador. Puedes continuar el registro despues.'];
             $selectedPurchaseAreaId = 0;
-            $formItems = ['', ''];
+            $formItems = [];
           }
 
           if ($action === 'send') {
@@ -381,7 +388,7 @@ class WorkerController extends Controller {
               $msg = ['type' => 'warning', 'text' => 'Requerimiento enviado, pero el correo no se envio. El administrador puede revisar el log.'];
             }
             $selectedPurchaseAreaId = 0;
-            $formItems = ['', ''];
+            $formItems = [];
           }
 
           $defaultDate = $requiredDate;
@@ -408,7 +415,7 @@ class WorkerController extends Controller {
       $grouped[$key]['items'][] = $row;
     }
 
-    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'defaultDate', 'selectedPurchaseAreaId', 'formItems', 'msg', 'week', 'grouped'));
+    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'supplies', 'unitMeasures', 'defaultDate', 'selectedPurchaseAreaId', 'formItems', 'msg', 'week', 'grouped'));
   }
 
   public function activities(): void {

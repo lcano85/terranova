@@ -9,6 +9,8 @@ require_once __DIR__ . '/../models/Attendance.php';
 require_once __DIR__ . '/../models/Payroll.php';
 require_once __DIR__ . '/../models/WorkArea.php';
 require_once __DIR__ . '/../models/PurchaseArea.php';
+require_once __DIR__ . '/../models/Supply.php';
+require_once __DIR__ . '/../models/UnitMeasure.php';
 require_once __DIR__ . '/../models/Requirement.php';
 require_once __DIR__ . '/../models/Activity.php';
 require_once __DIR__ . '/../models/Task.php';
@@ -470,6 +472,104 @@ class AdminController extends Controller
     $this->view('admin/purchase_areas', compact('areas', 'msg'));
   }
 
+  public function supplies(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          Supply::create($_POST);
+          $msg = ['type' => 'success', 'text' => 'Insumo registrado'];
+        }
+        if ($action === 'update') {
+          Supply::update((int)($_POST['id'] ?? 0), $_POST);
+          $msg = ['type' => 'success', 'text' => 'Insumo actualizado'];
+        }
+        if ($action === 'activate') {
+          Supply::setActive((int)($_POST['id'] ?? 0), 1);
+          $msg = ['type' => 'success', 'text' => 'Insumo activado'];
+        }
+        if ($action === 'deactivate') {
+          Supply::setActive((int)($_POST['id'] ?? 0), 0);
+          $msg = ['type' => 'warning', 'text' => 'Insumo desactivado'];
+        }
+        } catch (Throwable $e) {
+          $message = $e->getMessage();
+          if (str_contains($message, 'uq_supplies_area_name') || str_contains($message, 'Duplicate entry')) {
+            $message = 'Ya existe un insumo con ese nombre en una de las areas seleccionadas.';
+          }
+          $msg = ['type' => 'danger', 'text' => 'Error: ' . $message];
+        }
+    }
+
+    $search = trim((string)($_GET['search'] ?? ''));
+    $purchaseAreaId = (int)($_GET['purchase_area_id'] ?? 0);
+    $purchaseAreaId = $purchaseAreaId > 0 ? $purchaseAreaId : null;
+    $rawStatus = (string)($_GET['status'] ?? '');
+    $status = $rawStatus === '' ? null : (int)$rawStatus;
+    $page = (int)($_GET['supplies_page'] ?? 1);
+    $perPage = (int)($_GET['supplies_per_page'] ?? 10);
+
+    $purchaseAreas = PurchaseArea::all();
+    $suppliesPagination = Supply::paginate($search, $purchaseAreaId, $status, $page, $perPage);
+    $supplies = $suppliesPagination['rows'];
+    $suppliesPaginationMeta = $suppliesPagination['meta'];
+
+    $this->view('admin/supplies', compact(
+      'msg',
+      'purchaseAreas',
+      'supplies',
+      'suppliesPaginationMeta',
+      'search',
+      'purchaseAreaId',
+      'rawStatus'
+      ));
+    }
+
+  public function unitMeasures(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = $_POST['action'] ?? '';
+
+      try {
+        if ($action === 'create') {
+          UnitMeasure::create($_POST);
+          $msg = ['type' => 'success', 'text' => 'Unidad de medida registrada'];
+        }
+        if ($action === 'update') {
+          UnitMeasure::update((int)($_POST['id'] ?? 0), $_POST);
+          $msg = ['type' => 'success', 'text' => 'Unidad de medida actualizada'];
+        }
+        if ($action === 'activate') {
+          UnitMeasure::setActive((int)($_POST['id'] ?? 0), 1);
+          $msg = ['type' => 'success', 'text' => 'Unidad de medida activada'];
+        }
+        if ($action === 'deactivate') {
+          UnitMeasure::setActive((int)($_POST['id'] ?? 0), 0);
+          $msg = ['type' => 'warning', 'text' => 'Unidad de medida desactivada'];
+        }
+      } catch (Throwable $e) {
+        $message = $e->getMessage();
+        if (str_contains($message, 'uq_unit_measures_normalized_name') || str_contains($message, 'Duplicate entry')) {
+          $message = 'Ya existe una unidad de medida con ese nombre.';
+        }
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $message];
+      }
+    }
+
+    $units = UnitMeasure::all();
+    $this->view('admin/unit_measures', compact('units', 'msg'));
+  }
+
   public function requirements(): void
   {
     Auth::requireRole('admin');
@@ -512,11 +612,14 @@ class AdminController extends Controller
 
         if ($action === 'create_requirement') {
           $workerId = (int)($_POST['user_id'] ?? 0);
-          $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
-          $requiredDate = trim((string)($_POST['required_date'] ?? ''));
-          $itemsRaw = (array)($_POST['items'] ?? []);
-          $sanitized = Requirement::sanitizeItems($itemsRaw);
-          $items = $sanitized['items'];
+            $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
+            $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+            $itemsRaw = (array)($_POST['items'] ?? []);
+            $supplyIdsRaw = (array)($_POST['supply_ids'] ?? []);
+            $quantitiesRaw = (array)($_POST['quantities'] ?? []);
+            $unitMeasureIdsRaw = (array)($_POST['unit_measure_ids'] ?? []);
+            $sanitized = Requirement::sanitizeStructuredItems($itemsRaw, $supplyIdsRaw, $quantitiesRaw, $unitMeasureIdsRaw, $purchaseAreaId);
+            $items = $sanitized['items'];
 
           $worker = User::findWithDetails($workerId);
           if (!$worker || !in_array(($worker['role'] ?? ''), ['admin', 'worker'], true)) {
@@ -564,10 +667,12 @@ class AdminController extends Controller
 
     $week = Requirement::weekRangeForDate($selectedWeekStart);
     $rows = Requirement::forAdminWeek($week['from']);
-    $weekOptions = Requirement::weekOptions(8);
-    $workers = User::allRequirementUsers();
-    $purchaseAreas = PurchaseArea::active();
-    $today = date('Y-m-d');
+      $weekOptions = Requirement::weekOptions(8);
+      $workers = User::allRequirementUsers();
+      $purchaseAreas = PurchaseArea::active();
+      $supplies = Supply::activeForRequirements();
+      $unitMeasures = UnitMeasure::active();
+      $today = date('Y-m-d');
     $defaultRequirementDate = ($today >= $week['from'] && $today <= $week['to']) ? $today : $week['from'];
     $mailLogs = array_slice($this->requirementMailLogs(), 0, 10);
     $grouped = [];
@@ -595,7 +700,19 @@ class AdminController extends Controller
       $grouped[$workerKey]['areas'][$areaKey]['items'][] = $row;
     }
 
-    $this->view('admin/requirements', compact('msg', 'week', 'grouped', 'selectedWeekStart', 'weekOptions', 'mailLogs', 'workers', 'purchaseAreas', 'defaultRequirementDate'));
+    $this->view('admin/requirements', compact(
+      'msg',
+      'week',
+      'grouped',
+      'selectedWeekStart',
+      'weekOptions',
+      'mailLogs',
+      'workers',
+      'purchaseAreas',
+      'supplies',
+      'unitMeasures',
+      'defaultRequirementDate'
+    ));
   }
 
   private function requirementMailLogs(): array
