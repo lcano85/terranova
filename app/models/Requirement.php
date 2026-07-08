@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../core/Database.php';
+require_once __DIR__ . '/Supply.php';
+require_once __DIR__ . '/UnitMeasure.php';
 
 class Requirement
 {
@@ -34,6 +36,28 @@ class Requirement
     if (empty($existing['submitted_at'])) {
       $pdo->exec("ALTER TABLE requirements ADD COLUMN submitted_at DATETIME NULL AFTER status");
       $pdo->exec("UPDATE requirements SET submitted_at = COALESCE(submitted_at, created_at, NOW()) WHERE status = 'submitted'");
+    }
+
+    $itemColumns = $pdo->query("SHOW COLUMNS FROM requirement_items")->fetchAll();
+    $existingItemColumns = [];
+    foreach ($itemColumns as $column) {
+      $existingItemColumns[$column['Field']] = true;
+    }
+
+    if (empty($existingItemColumns['supply_id'])) {
+      Supply::ensureSchema();
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN supply_id INT NULL AFTER requirement_id");
+      $pdo->exec("ALTER TABLE requirement_items ADD KEY idx_requirement_items_supply (supply_id)");
+    }
+
+    if (empty($existingItemColumns['quantity'])) {
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN quantity DECIMAL(12,2) NULL AFTER item_name");
+    }
+
+    if (empty($existingItemColumns['unit_measure_id'])) {
+      UnitMeasure::ensureSchema();
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN unit_measure_id INT NULL AFTER quantity");
+      $pdo->exec("ALTER TABLE requirement_items ADD KEY idx_requirement_items_unit_measure (unit_measure_id)");
     }
 
     self::$schemaEnsured = true;
@@ -96,12 +120,23 @@ class Requirement
       $requirementId = (int)$pdo->lastInsertId();
 
       $itemSt = $pdo->prepare("
-        INSERT INTO requirement_items (requirement_id, item_name, is_purchased)
-        VALUES (?,?,0)
+        INSERT INTO requirement_items (requirement_id, supply_id, item_name, quantity, unit_measure_id, is_purchased)
+        VALUES (?,?,?,?,?,0)
       ");
 
-      foreach ($items as $itemName) {
-        $itemSt->execute([$requirementId, $itemName]);
+      foreach ($items as $item) {
+        if (is_array($item)) {
+          $itemSt->execute([
+            $requirementId,
+            !empty($item['supply_id']) ? (int)$item['supply_id'] : null,
+            $item['item_name'],
+            $item['quantity'] ?? null,
+            !empty($item['unit_measure_id']) ? (int)$item['unit_measure_id'] : null,
+          ]);
+          continue;
+        }
+
+        $itemSt->execute([$requirementId, null, $item, null, null]);
       }
 
       $pdo->commit();
@@ -126,11 +161,17 @@ class Requirement
         r.submitted_at,
         pa.name AS purchase_area_name,
         ri.id AS item_id,
+        ri.supply_id,
         ri.item_name,
+        ri.quantity,
+        ri.unit_measure_id,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation,
         ri.is_purchased
       FROM requirements r
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
+      LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
       WHERE r.user_id=?
         AND r.week_start=?
       ORDER BY r.required_date ASC, pa.name ASC, ri.id ASC
@@ -155,12 +196,18 @@ class Requirement
         u.last_name,
         pa.name AS purchase_area_name,
         ri.id AS item_id,
+        ri.supply_id,
         ri.item_name,
+        ri.quantity,
+        ri.unit_measure_id,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation,
         ri.is_purchased
       FROM requirements r
       JOIN users u ON u.id = r.user_id
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
+      LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
       WHERE r.week_start=?
         AND u.role IN ('admin', 'worker')
       ORDER BY u.first_name ASC, u.last_name ASC, pa.name ASC, r.required_date ASC, ri.id ASC
@@ -209,6 +256,96 @@ class Requirement
     ];
   }
 
+  public static function itemDisplayName(array $item): string
+  {
+    $name = trim((string)($item['item_name'] ?? ''));
+    $quantity = $item['quantity'] ?? null;
+    $unit = trim((string)($item['unit_measure_abbreviation'] ?? ''));
+    if ($unit === '') {
+      $unit = trim((string)($item['unit_measure_name'] ?? ''));
+    }
+
+    if ($quantity === null && $unit === '') {
+      return $name;
+    }
+
+    $quantityText = '';
+    if ($quantity !== null && $quantity !== '') {
+      $quantityText = rtrim(rtrim(number_format((float)$quantity, 2, '.', ''), '0'), '.');
+    }
+
+    return trim($name . ' - ' . trim($quantityText . ' ' . $unit));
+  }
+
+  public static function sanitizeStructuredItems(array $itemNames, array $supplyIds, array $quantities, array $unitMeasureIds, int $purchaseAreaId = 0): array
+  {
+    self::ensureSchema();
+    $uniqueItems = [];
+    $duplicates = [];
+    $seen = [];
+
+    $max = max(count($itemNames), count($supplyIds), count($quantities), count($unitMeasureIds));
+    for ($i = 0; $i < $max; $i++) {
+      $itemName = preg_replace('/\s+/u', ' ', trim((string)($itemNames[$i] ?? ''))) ?? trim((string)($itemNames[$i] ?? ''));
+      $supplyId = (int)($supplyIds[$i] ?? 0);
+      $rawQuantity = trim((string)($quantities[$i] ?? ''));
+      $unitMeasureId = (int)($unitMeasureIds[$i] ?? 0);
+
+      if ($itemName === '' && $supplyId <= 0 && $rawQuantity === '' && $unitMeasureId <= 0) {
+        continue;
+      }
+
+      if ($itemName === '' || $supplyId <= 0) {
+        throw new RuntimeException('Debes seleccionar un producto registrado en insumos en todas las filas.');
+      }
+
+      $supplySt = Database::conn()->prepare("
+        SELECT s.id, s.name
+        FROM supplies s
+        JOIN supply_purchase_areas spa ON spa.supply_id = s.id
+        WHERE s.id=?
+          AND s.is_active=1
+          AND (? = 0 OR spa.purchase_area_id=?)
+        LIMIT 1
+      ");
+      $supplySt->execute([$supplyId, $purchaseAreaId, $purchaseAreaId]);
+      $supply = $supplySt->fetch();
+      if (!$supply) {
+        throw new RuntimeException('El producto ' . $itemName . ' no pertenece al area seleccionada o esta inactivo.');
+      }
+      if ($rawQuantity === '' || !is_numeric(str_replace(',', '.', $rawQuantity))) {
+        throw new RuntimeException('Debes ingresar una cantidad valida para ' . $itemName . '.');
+      }
+      $quantity = (float)str_replace(',', '.', $rawQuantity);
+      if ($quantity <= 0) {
+        throw new RuntimeException('La cantidad debe ser mayor a cero para ' . $itemName . '.');
+      }
+      if ($unitMeasureId <= 0 || !UnitMeasure::find($unitMeasureId)) {
+        throw new RuntimeException('Debes seleccionar una unidad de medida para ' . $itemName . '.');
+      }
+
+      $itemName = (string)$supply['name'];
+      $normalized = self::normalizeItemName($itemName);
+      if (isset($seen[$normalized])) {
+        $duplicates[] = $itemName;
+        continue;
+      }
+
+      $seen[$normalized] = true;
+      $uniqueItems[] = [
+        'supply_id' => $supplyId > 0 ? $supplyId : null,
+        'item_name' => $itemName,
+        'quantity' => $quantity,
+        'unit_measure_id' => $unitMeasureId,
+      ];
+    }
+
+    return [
+      'items' => $uniqueItems,
+      'duplicates' => $duplicates,
+    ];
+  }
+
   public static function duplicateItemsForWorkerSlot(int $userId, int $purchaseAreaId, string $requiredDate, array $items): array
   {
     self::ensureSchema();
@@ -237,7 +374,8 @@ class Requirement
 
     $duplicates = [];
     foreach ($items as $item) {
-      $normalized = self::normalizeItemName((string)$item);
+      $itemName = is_array($item) ? (string)($item['item_name'] ?? '') : (string)$item;
+      $normalized = self::normalizeItemName($itemName);
       if (isset($existingMap[$normalized])) {
         $duplicates[] = $existingMap[$normalized];
       }
@@ -343,12 +481,17 @@ class Requirement
         u.document_number,
         wa.name AS worker_area_name,
         pa.name AS purchase_area_name,
-        ri.item_name
+        ri.item_name,
+        ri.quantity,
+        ri.unit_measure_id,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation
       FROM requirements r
       JOIN users u ON u.id = r.user_id
       LEFT JOIN work_areas wa ON wa.id = u.area_id
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
+      LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
       WHERE r.id=?
       ORDER BY ri.id ASC
     ");
@@ -368,7 +511,7 @@ class Requirement
       'document_number' => $first['document_number'],
       'worker_area_name' => $first['worker_area_name'],
       'purchase_area_name' => $first['purchase_area_name'],
-      'items' => array_map(static fn($row) => $row['item_name'], $rows),
+      'items' => array_map(static fn($row) => self::itemDisplayName($row), $rows),
     ];
   }
 
@@ -385,12 +528,17 @@ class Requirement
         u.document_number,
         wa.name AS worker_area_name,
         pa.name AS purchase_area_name,
-        ri.item_name
+        ri.item_name,
+        ri.quantity,
+        ri.unit_measure_id,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation
       FROM requirements r
       JOIN users u ON u.id = r.user_id
       LEFT JOIN work_areas wa ON wa.id = u.area_id
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
+      LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
       WHERE r.user_id=?
         AND r.week_start=?
         AND r.status='submitted'
@@ -414,7 +562,7 @@ class Requirement
           'items' => [],
         ];
       }
-      $groups[$key]['items'][] = $row['item_name'];
+      $groups[$key]['items'][] = self::itemDisplayName($row);
     }
 
     return [

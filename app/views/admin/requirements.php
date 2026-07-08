@@ -2,6 +2,22 @@
 require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
 require_once __DIR__ . '/../../core/Csrf.php';
+
+$suppliesForJs = array_map(static function ($supply) {
+  return [
+    'id' => (int)$supply['id'],
+    'name' => (string)$supply['name'],
+    'area_ids' => array_values(array_filter(array_map('intval', explode(',', (string)($supply['purchase_area_ids'] ?? ''))))),
+  ];
+}, $supplies ?? []);
+
+$unitMeasuresForJs = array_map(static function ($unit) {
+  return [
+    'id' => (int)$unit['id'],
+    'name' => (string)$unit['name'],
+    'abbreviation' => (string)($unit['abbreviation'] ?? ''),
+  ];
+}, $unitMeasures ?? []);
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
@@ -120,7 +136,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
 
                 <div class="col-md-6">
                   <label class="form-label">Area de compra</label>
-                  <select class="form-select" name="purchase_area_id" required>
+                  <select class="form-select" name="purchase_area_id" required id="adminRequirementPurchaseArea">
                     <option value="">Selecciona area</option>
                     <?php foreach ($purchaseAreas as $area): ?>
                       <option value="<?= (int)$area['id'] ?>"><?= Helpers::e($area['name']) ?></option>
@@ -141,9 +157,32 @@ require_once __DIR__ . '/../../core/Csrf.php';
                 <button type="button" class="btn btn-sm btn-outline-primary" id="addAdminRequirementItem">+ Agregar producto</button>
               </div>
 
+              <datalist id="adminRequirementSupplyOptions"></datalist>
+
               <div id="adminRequirementItems" class="d-flex flex-column gap-2">
-                <input class="form-control" name="items[]" placeholder="Ej: 1 caja de guantes" required>
-                <input class="form-control" name="items[]" placeholder="Ej: botellas poet">
+                <div class="row g-2 align-items-start" data-admin-requirement-item>
+                  <div class="col-md-6">
+                    <input type="hidden" name="supply_ids[]" data-supply-id>
+                    <input class="form-control" name="items[]" list="adminRequirementSupplyOptions" placeholder="Escribe y selecciona un insumo" data-supply-name required>
+                    <div class="form-text text-danger d-none" data-supply-error>Selecciona un insumo valido del listado.</div>
+                  </div>
+                  <div class="col-md-2">
+                    <input class="form-control" type="number" name="quantities[]" placeholder="Cant." min="0.01" step="0.01" required>
+                  </div>
+                  <div class="col-md-3">
+                    <select class="form-select" name="unit_measure_ids[]" required data-unit-select>
+                      <option value="">Unidad</option>
+                      <?php foreach ($unitMeasures as $unit): ?>
+                        <option value="<?= (int)$unit['id'] ?>">
+                          <?= Helpers::e($unit['abbreviation'] ? $unit['name'] . ' (' . $unit['abbreviation'] . ')' : $unit['name']) ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div class="col-md-1 d-grid">
+                    <button type="button" class="btn btn-outline-danger" data-remove-admin-item disabled>&times;</button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -236,6 +275,13 @@ require_once __DIR__ . '/../../core/Csrf.php';
                             <?= (int)$item['is_purchased'] === 1 ? 'checked' : '' ?>>
                           <label class="form-check-label flex-grow-1">
                             <?= Helpers::e($item['item_name']) ?>
+                            <?php if ($item['quantity'] !== null || !empty($item['unit_measure_name'])): ?>
+                              <span class="text-muted small">
+                                -
+                                <?= $item['quantity'] !== null ? Helpers::e(rtrim(rtrim(number_format((float)$item['quantity'], 2, '.', ''), '0'), '.')) : '' ?>
+                                <?= Helpers::e($item['unit_measure_abbreviation'] ?: ($item['unit_measure_name'] ?? '')) ?>
+                              </span>
+                            <?php endif; ?>
                           </label>
                           <span class="js-purchase-status badge text-bg-<?= (int)$item['is_purchased'] === 1 ? 'success' : 'secondary' ?>">
                             <?= (int)$item['is_purchased'] === 1 ? 'Comprado' : 'Pendiente' ?>
@@ -265,18 +311,133 @@ require_once __DIR__ . '/../../core/Csrf.php';
 </div>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    const requirementSupplies = <?= json_encode($suppliesForJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]' ?>;
+    const requirementUnits = <?= json_encode($unitMeasuresForJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]' ?>;
     const addAdminItemButton = document.getElementById('addAdminRequirementItem');
     const adminItemsContainer = document.getElementById('adminRequirementItems');
+    const purchaseAreaSelect = document.getElementById('adminRequirementPurchaseArea');
+    const supplyOptions = document.getElementById('adminRequirementSupplyOptions');
     const forms = document.querySelectorAll('.js-requirement-toggle-form');
 
-    if (addAdminItemButton && adminItemsContainer) {
-      addAdminItemButton.addEventListener('click', function() {
-        const input = document.createElement('input');
-        input.className = 'form-control';
-        input.name = 'items[]';
-        input.placeholder = 'Ej: 1 paquete de servilletas';
-        adminItemsContainer.appendChild(input);
+    function availableSupplies() {
+      const areaId = Number(purchaseAreaSelect?.value || 0);
+      if (!areaId) {
+        return [];
+      }
+      return requirementSupplies.filter(function(supply) {
+        return Array.isArray(supply.area_ids) && supply.area_ids.includes(areaId);
       });
+    }
+
+    function refreshSupplyOptions() {
+      if (!supplyOptions) {
+        return;
+      }
+      supplyOptions.innerHTML = '';
+      availableSupplies().forEach(function(supply) {
+        const option = document.createElement('option');
+        option.value = supply.name;
+        supplyOptions.appendChild(option);
+      });
+    }
+
+    function resolveSupply(input) {
+      const row = input.closest('[data-admin-requirement-item]');
+      const hidden = row?.querySelector('[data-supply-id]');
+      const error = row?.querySelector('[data-supply-error]');
+      const value = input.value.trim().toLowerCase();
+      const match = availableSupplies().find(function(supply) {
+        return String(supply.name || '').trim().toLowerCase() === value;
+      });
+
+      if (hidden) {
+        hidden.value = match ? String(match.id) : '';
+      }
+      if (error) {
+        error.classList.toggle('d-none', input.value.trim() === '' || !!match);
+      }
+    }
+
+    function unitOptionsHtml() {
+      return '<option value="">Unidad</option>' + requirementUnits.map(function(unit) {
+        const label = unit.abbreviation ? unit.name + ' (' + unit.abbreviation + ')' : unit.name;
+        return '<option value="' + unit.id + '">' + label.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
+      }).join('');
+    }
+
+    function bindRequirementItem(row) {
+      const input = row.querySelector('[data-supply-name]');
+      const removeButton = row.querySelector('[data-remove-admin-item]');
+      if (input) {
+        input.addEventListener('input', function() {
+          resolveSupply(input);
+        });
+        input.addEventListener('change', function() {
+          resolveSupply(input);
+        });
+      }
+      if (removeButton) {
+        removeButton.addEventListener('click', function() {
+          row.remove();
+          updateRemoveButtons();
+        });
+      }
+    }
+
+    function updateRemoveButtons() {
+      const rows = adminItemsContainer ? adminItemsContainer.querySelectorAll('[data-admin-requirement-item]') : [];
+      rows.forEach(function(row) {
+        const button = row.querySelector('[data-remove-admin-item]');
+        if (button) {
+          button.disabled = rows.length <= 1;
+        }
+      });
+    }
+
+    function addRequirementItem() {
+      if (!adminItemsContainer) {
+        return;
+      }
+
+      const row = document.createElement('div');
+      row.className = 'row g-2 align-items-start';
+      row.setAttribute('data-admin-requirement-item', '');
+      row.innerHTML =
+        '<div class="col-md-6">' +
+          '<input type="hidden" name="supply_ids[]" data-supply-id>' +
+          '<input class="form-control" name="items[]" list="adminRequirementSupplyOptions" placeholder="Escribe y selecciona un insumo" data-supply-name required>' +
+          '<div class="form-text text-danger d-none" data-supply-error>Selecciona un insumo valido del listado.</div>' +
+        '</div>' +
+        '<div class="col-md-2">' +
+          '<input class="form-control" type="number" name="quantities[]" placeholder="Cant." min="0.01" step="0.01" required>' +
+        '</div>' +
+        '<div class="col-md-3">' +
+          '<select class="form-select" name="unit_measure_ids[]" required data-unit-select>' + unitOptionsHtml() + '</select>' +
+        '</div>' +
+        '<div class="col-md-1 d-grid">' +
+          '<button type="button" class="btn btn-outline-danger" data-remove-admin-item>&times;</button>' +
+        '</div>';
+
+      adminItemsContainer.appendChild(row);
+      bindRequirementItem(row);
+      updateRemoveButtons();
+    }
+
+    if (purchaseAreaSelect) {
+      purchaseAreaSelect.addEventListener('change', function() {
+        refreshSupplyOptions();
+        document.querySelectorAll('[data-supply-name]').forEach(function(input) {
+          input.value = '';
+          resolveSupply(input);
+        });
+      });
+      refreshSupplyOptions();
+    }
+
+    if (addAdminItemButton && adminItemsContainer) {
+      adminItemsContainer.querySelectorAll('[data-admin-requirement-item]').forEach(bindRequirementItem);
+      updateRemoveButtons();
+      addAdminItemButton.addEventListener('click', addRequirementItem);
     }
 
     function updateWorkerSummary(form) {
