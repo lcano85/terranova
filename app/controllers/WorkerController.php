@@ -300,11 +300,9 @@ class WorkerController extends Controller {
     $base = Auth::user();
     $user = User::findWithDetails((int)$base['id']) ?: $base;
       $msg = null;
-      $purchaseAreas = PurchaseArea::active();
       $supplies = Supply::activeForRequirements();
       $unitMeasures = UnitMeasure::active();
       $defaultDate = Requirement::nextAllowedDate();
-      $selectedPurchaseAreaId = 0;
       $formItems = [];
 
     if (Helpers::isPost()) {
@@ -333,22 +331,18 @@ class WorkerController extends Controller {
         }
 
         if (in_array($action, ['save_draft', 'send'], true)) {
-            $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
-            $requiredDate = trim((string)($_POST['required_date'] ?? ''));
-            $itemsRaw = (array)($_POST['items'] ?? []);
-            $supplyIdsRaw = (array)($_POST['supply_ids'] ?? []);
-            $quantitiesRaw = (array)($_POST['quantities'] ?? []);
-            $unitMeasureIdsRaw = (array)($_POST['unit_measure_ids'] ?? []);
-            $selectedPurchaseAreaId = $purchaseAreaId;
-            $defaultDate = $requiredDate !== '' ? $requiredDate : $defaultDate;
+          $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+          $itemsRaw = (array)($_POST['items'] ?? []);
+          $supplyIdsRaw = (array)($_POST['supply_ids'] ?? []);
+          $quantitiesRaw = (array)($_POST['quantities'] ?? []);
+          $unitMeasureIdsRaw = (array)($_POST['unit_measure_ids'] ?? []);
+          $detailsRaw = (array)($_POST['details'] ?? []);
+          $defaultDate = $requiredDate !== '' ? $requiredDate : $defaultDate;
 
-            $sanitized = Requirement::sanitizeStructuredItems($itemsRaw, $supplyIdsRaw, $quantitiesRaw, $unitMeasureIdsRaw, $purchaseAreaId);
-            $items = $sanitized['items'];
-            $formItems = $items;
+          $sanitized = Requirement::sanitizeStructuredItems($itemsRaw, $supplyIdsRaw, $quantitiesRaw, $unitMeasureIdsRaw, 0, $detailsRaw);
+          $items = $sanitized['items'];
+          $formItems = $items;
 
-          if ($purchaseAreaId <= 0) {
-            throw new RuntimeException('Debes seleccionar un area de compra');
-          }
           if ($requiredDate === '' || !Requirement::isAllowedDate($requiredDate)) {
             throw new RuntimeException('La fecha debe ser hoy o una fecha futura');
           }
@@ -359,35 +353,44 @@ class WorkerController extends Controller {
             throw new RuntimeException('No puedes repetir items en el mismo registro: ' . implode(', ', $sanitized['duplicates']));
           }
 
-          $existingDuplicates = Requirement::duplicateItemsForWorkerSlot(
-            (int)$user['id'],
-            $purchaseAreaId,
-            $requiredDate,
-            $items
-          );
-          if (!empty($existingDuplicates)) {
-            throw new RuntimeException('Estos items ya fueron registrados para esa area y fecha: ' . implode(', ', $existingDuplicates));
+          $itemsByArea = [];
+          foreach ($items as $item) {
+            $areaId = (int)($item['purchase_area_id'] ?? 0);
+            if ($areaId <= 0) {
+              throw new RuntimeException('No se pudo determinar el area de compra para ' . $item['item_name'] . '.');
+            }
+            $itemsByArea[$areaId][] = $item;
+          }
+
+          foreach ($itemsByArea as $areaId => $areaItems) {
+            $existingDuplicates = Requirement::duplicateItemsForWorkerSlot((int)$user['id'], (int)$areaId, $requiredDate, $areaItems);
+            if (!empty($existingDuplicates)) {
+              throw new RuntimeException('Estos items ya fueron registrados para su area y fecha: ' . implode(', ', $existingDuplicates));
+            }
           }
 
           if ($action === 'save_draft') {
-            Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items, 'draft');
+            foreach ($itemsByArea as $areaId => $areaItems) {
+              Requirement::create((int)$user['id'], (int)$areaId, $requiredDate, $areaItems, 'draft');
+            }
             $msg = ['type' => 'success', 'text' => 'Requerimiento guardado como borrador. Puedes continuar el registro despues.'];
-            $selectedPurchaseAreaId = 0;
             $formItems = [];
           }
 
           if ($action === 'send') {
-            $requirementId = Requirement::create((int)$user['id'], $purchaseAreaId, $requiredDate, $items, 'submitted');
+            $requirementIds = [];
+            foreach ($itemsByArea as $areaId => $areaItems) {
+              $requirementIds[] = Requirement::create((int)$user['id'], (int)$areaId, $requiredDate, $areaItems, 'submitted');
+            }
             $week = Requirement::weekRangeForDate($requiredDate);
             Requirement::submitWorkerWeek((int)$user['id'], $week['from']);
 
             try {
-              $this->notifyAdminsAboutRequirement($requirementId);
+              $this->notifyAdminsAboutRequirement($requirementIds[0]);
               $msg = ['type' => 'success', 'text' => 'Requerimiento enviado y correo notificado al administrador'];
             } catch (Throwable $mailError) {
               $msg = ['type' => 'warning', 'text' => 'Requerimiento enviado, pero el correo no se envio. El administrador puede revisar el log.'];
             }
-            $selectedPurchaseAreaId = 0;
             $formItems = [];
           }
 
@@ -415,7 +418,7 @@ class WorkerController extends Controller {
       $grouped[$key]['items'][] = $row;
     }
 
-    $this->view('worker/requirements', compact('user', 'purchaseAreas', 'supplies', 'unitMeasures', 'defaultDate', 'selectedPurchaseAreaId', 'formItems', 'msg', 'week', 'grouped'));
+    $this->view('worker/requirements', compact('user', 'supplies', 'unitMeasures', 'defaultDate', 'formItems', 'msg', 'week', 'grouped'));
   }
 
   public function activities(): void {

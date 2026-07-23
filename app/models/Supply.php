@@ -18,6 +18,7 @@ class Supply
         purchase_area_id INT NOT NULL,
         name VARCHAR(180) NOT NULL,
         normalized_name VARCHAR(180) NOT NULL,
+        price DECIMAL(12,2) NULL,
         is_active TINYINT(1) NOT NULL DEFAULT 1,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -55,6 +56,11 @@ class Supply
     ");
 
     $pdo = Database::conn();
+    $priceColumn = $pdo->query("SHOW COLUMNS FROM supplies LIKE 'price'")->fetch();
+    if (!$priceColumn) {
+      $pdo->exec("ALTER TABLE supplies ADD COLUMN price DECIMAL(12,2) NULL AFTER normalized_name");
+    }
+
     $hasUniqueNameIndex = $pdo->query("
       SHOW INDEX FROM supplies WHERE Key_name = 'uq_supplies_normalized_name'
     ")->fetch();
@@ -107,6 +113,7 @@ class Supply
         s.purchase_area_id,
         s.name,
         s.normalized_name,
+        s.price,
         s.is_active,
         s.created_at,
         s.updated_at,
@@ -116,7 +123,7 @@ class Supply
       LEFT JOIN supply_purchase_areas spa ON spa.supply_id = s.id
       LEFT JOIN purchase_areas pa ON pa.id = spa.purchase_area_id
       {$where}
-      GROUP BY s.id, s.purchase_area_id, s.name, s.normalized_name, s.is_active, s.created_at, s.updated_at
+      GROUP BY s.id, s.purchase_area_id, s.name, s.normalized_name, s.price, s.is_active, s.created_at, s.updated_at
       ORDER BY s.name ASC
       LIMIT {$perPage} OFFSET {$offset}
     ";
@@ -148,13 +155,14 @@ class Supply
 
     try {
       $st = $pdo->prepare("
-        INSERT INTO supplies (purchase_area_id, name, normalized_name, is_active)
-        VALUES (?,?,?,?)
+        INSERT INTO supplies (purchase_area_id, name, normalized_name, price, is_active)
+        VALUES (?,?,?,?,?)
       ");
       $st->execute([
         $payload['primary_purchase_area_id'],
         $payload['name'],
         self::normalize($payload['name']),
+        $payload['price'],
         $payload['is_active'],
       ]);
 
@@ -183,13 +191,14 @@ class Supply
     try {
       $st = $pdo->prepare("
         UPDATE supplies
-        SET purchase_area_id=?, name=?, normalized_name=?, is_active=?, updated_at=NOW()
+        SET purchase_area_id=?, name=?, normalized_name=?, price=?, is_active=?, updated_at=NOW()
         WHERE id=?
       ");
       $st->execute([
         $payload['primary_purchase_area_id'],
         $payload['name'],
         self::normalize($payload['name']),
+        $payload['price'],
         $payload['is_active'],
         $id,
       ]);
@@ -218,11 +227,12 @@ class Supply
       SELECT
         s.id,
         s.name,
+        s.price,
         GROUP_CONCAT(spa.purchase_area_id ORDER BY spa.purchase_area_id ASC SEPARATOR ',') AS purchase_area_ids
       FROM supplies s
       JOIN supply_purchase_areas spa ON spa.supply_id = s.id
       WHERE s.is_active=1
-      GROUP BY s.id, s.name
+      GROUP BY s.id, s.name, s.price
       ORDER BY s.name ASC
     ");
     return $st->fetchAll();
@@ -244,6 +254,18 @@ class Supply
       throw new RuntimeException('Debes seleccionar al menos un area de compra.');
     }
 
+    $rawPrice = trim((string)($data['price'] ?? ''));
+    $price = null;
+    if ($rawPrice !== '') {
+      if (!is_numeric($rawPrice) || (float)$rawPrice < 0) {
+        throw new RuntimeException('El precio debe ser un numero mayor o igual a cero.');
+      }
+      if ((float)$rawPrice > 9999999999.99) {
+        throw new RuntimeException('El precio ingresado excede el limite permitido.');
+      }
+      $price = number_format((float)$rawPrice, 2, '.', '');
+    }
+
     foreach ($purchaseAreaIds as $purchaseAreaId) {
       if (!PurchaseArea::find($purchaseAreaId)) {
         throw new RuntimeException('Debes seleccionar areas de compra validas.');
@@ -254,6 +276,7 @@ class Supply
       'name' => $name,
       'primary_purchase_area_id' => $purchaseAreaIds[0],
       'purchase_area_ids' => $purchaseAreaIds,
+      'price' => $price,
       'is_active' => (int)($data['is_active'] ?? 1) === 1 ? 1 : 0,
     ];
   }

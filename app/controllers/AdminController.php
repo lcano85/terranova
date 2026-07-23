@@ -612,21 +612,18 @@ class AdminController extends Controller
 
         if ($action === 'create_requirement') {
           $workerId = (int)($_POST['user_id'] ?? 0);
-            $purchaseAreaId = (int)($_POST['purchase_area_id'] ?? 0);
-            $requiredDate = trim((string)($_POST['required_date'] ?? ''));
-            $itemsRaw = (array)($_POST['items'] ?? []);
-            $supplyIdsRaw = (array)($_POST['supply_ids'] ?? []);
-            $quantitiesRaw = (array)($_POST['quantities'] ?? []);
-            $unitMeasureIdsRaw = (array)($_POST['unit_measure_ids'] ?? []);
-            $sanitized = Requirement::sanitizeStructuredItems($itemsRaw, $supplyIdsRaw, $quantitiesRaw, $unitMeasureIdsRaw, $purchaseAreaId);
-            $items = $sanitized['items'];
+          $requiredDate = trim((string)($_POST['required_date'] ?? ''));
+          $itemsRaw = (array)($_POST['items'] ?? []);
+          $supplyIdsRaw = (array)($_POST['supply_ids'] ?? []);
+          $quantitiesRaw = (array)($_POST['quantities'] ?? []);
+          $unitMeasureIdsRaw = (array)($_POST['unit_measure_ids'] ?? []);
+          $detailsRaw = (array)($_POST['details'] ?? []);
+          $sanitized = Requirement::sanitizeStructuredItems($itemsRaw, $supplyIdsRaw, $quantitiesRaw, $unitMeasureIdsRaw, 0, $detailsRaw);
+          $items = $sanitized['items'];
 
           $worker = User::findWithDetails($workerId);
           if (!$worker || !in_array(($worker['role'] ?? ''), ['admin', 'worker'], true)) {
             throw new RuntimeException('Debes seleccionar un trabajador o administrador valido.');
-          }
-          if ($purchaseAreaId <= 0) {
-            throw new RuntimeException('Debes seleccionar un area de compra.');
           }
           $date = DateTime::createFromFormat('Y-m-d', $requiredDate);
           if (!$date || $date->format('Y-m-d') !== $requiredDate) {
@@ -639,19 +636,30 @@ class AdminController extends Controller
             throw new RuntimeException('No puedes repetir productos en el mismo registro: ' . implode(', ', $sanitized['duplicates']));
           }
 
-          $existingDuplicates = Requirement::duplicateItemsForWorkerSlot(
-            $workerId,
-            $purchaseAreaId,
-            $requiredDate,
-            $items
-          );
-          if (!empty($existingDuplicates)) {
-            throw new RuntimeException('Estos productos ya fueron registrados para esa area y fecha: ' . implode(', ', $existingDuplicates));
+          $itemsByArea = [];
+          foreach ($items as $item) {
+            $areaId = (int)($item['purchase_area_id'] ?? 0);
+            if ($areaId <= 0) {
+              throw new RuntimeException('No se pudo determinar el area de compra para ' . $item['item_name'] . '.');
+            }
+            $itemsByArea[$areaId][] = $item;
           }
 
-          $requirementId = Requirement::create($workerId, $purchaseAreaId, $requiredDate, $items, 'submitted');
+          foreach ($itemsByArea as $areaId => $areaItems) {
+            $existingDuplicates = Requirement::duplicateItemsForWorkerSlot($workerId, (int)$areaId, $requiredDate, $areaItems);
+            if (!empty($existingDuplicates)) {
+              throw new RuntimeException('Estos productos ya fueron registrados para su area y fecha: ' . implode(', ', $existingDuplicates));
+            }
+          }
+
+          $requirementIds = [];
+          foreach ($itemsByArea as $areaId => $areaItems) {
+            $requirementIds[] = Requirement::create($workerId, (int)$areaId, $requiredDate, $areaItems, 'submitted');
+          }
           $selectedWeekStart = Requirement::normalizeWeekStart($requiredDate);
-          $msg = ['type' => 'success', 'text' => 'Requerimiento registrado #' . $requirementId];
+          $msg = ['type' => 'success', 'text' => count($requirementIds) === 1
+            ? 'Requerimiento registrado #' . $requirementIds[0]
+            : count($requirementIds) . ' requerimientos registrados por area'];
         }
       } catch (Throwable $e) {
         if ($expectsJson) {
@@ -669,20 +677,38 @@ class AdminController extends Controller
     $rows = Requirement::forAdminWeek($week['from']);
       $weekOptions = Requirement::weekOptions(8);
       $workers = User::allRequirementUsers();
-      $purchaseAreas = PurchaseArea::active();
       $supplies = Supply::activeForRequirements();
       $unitMeasures = UnitMeasure::active();
       $today = date('Y-m-d');
     $defaultRequirementDate = ($today >= $week['from'] && $today <= $week['to']) ? $today : $week['from'];
     $mailLogs = array_slice($this->requirementMailLogs(), 0, 10);
     $grouped = [];
+    $weeklyEstimatedTotal = 0.0;
+    $weeklyPurchasedTotal = 0.0;
+    $weeklyUnpricedItems = 0;
 
     foreach ($rows as $row) {
+      $hasCalculablePrice = $row['unit_price'] !== null && $row['quantity'] !== null;
+      $row['subtotal'] = $hasCalculablePrice
+        ? round((float)$row['unit_price'] * (float)$row['quantity'], 2)
+        : null;
+
+      if ($row['subtotal'] === null) {
+        $weeklyUnpricedItems++;
+      } else {
+        $weeklyEstimatedTotal += $row['subtotal'];
+        if ((int)$row['is_purchased'] === 1) {
+          $weeklyPurchasedTotal += $row['subtotal'];
+        }
+      }
+
       $workerKey = (int)$row['user_id'];
       if (!isset($grouped[$workerKey])) {
         $grouped[$workerKey] = [
           'worker_name' => trim($row['first_name'] . ' ' . $row['last_name']),
           'user_role' => $row['user_role'] ?? 'worker',
+          'estimated_total' => 0.0,
+          'purchased_total' => 0.0,
           'areas' => []
         ];
       }
@@ -693,11 +719,21 @@ class AdminController extends Controller
           'required_date' => $row['required_date'],
           'purchase_area_name' => $row['purchase_area_name'],
           'status' => $row['status'] ?? 'submitted',
+          'estimated_total' => 0.0,
+          'purchased_total' => 0.0,
           'items' => []
         ];
       }
 
       $grouped[$workerKey]['areas'][$areaKey]['items'][] = $row;
+      if ($row['subtotal'] !== null) {
+        $grouped[$workerKey]['estimated_total'] += $row['subtotal'];
+        $grouped[$workerKey]['areas'][$areaKey]['estimated_total'] += $row['subtotal'];
+        if ((int)$row['is_purchased'] === 1) {
+          $grouped[$workerKey]['purchased_total'] += $row['subtotal'];
+          $grouped[$workerKey]['areas'][$areaKey]['purchased_total'] += $row['subtotal'];
+        }
+      }
     }
 
     $this->view('admin/requirements', compact(
@@ -708,10 +744,12 @@ class AdminController extends Controller
       'weekOptions',
       'mailLogs',
       'workers',
-      'purchaseAreas',
       'supplies',
       'unitMeasures',
-      'defaultRequirementDate'
+      'defaultRequirementDate',
+      'weeklyEstimatedTotal',
+      'weeklyPurchasedTotal',
+      'weeklyUnpricedItems'
     ));
   }
 

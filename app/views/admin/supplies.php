@@ -62,6 +62,7 @@ require_once __DIR__ . '/../../core/Pagination.php';
               <th style="width:80px;">ID</th>
               <th>Nombre del insumo</th>
               <th>Areas de compras</th>
+              <th>Precio</th>
               <th>Estado</th>
               <th style="width:250px;">Acciones</th>
             </tr>
@@ -73,6 +74,7 @@ require_once __DIR__ . '/../../core/Pagination.php';
                 <td><?= (int)$supply['id'] ?></td>
                 <td><?= Helpers::e($supply['name']) ?></td>
                 <td><?= Helpers::e($supply['purchase_area_names'] ?: 'Sin areas asignadas') ?></td>
+                <td><?= $supply['price'] !== null ? 'S/ ' . number_format((float)$supply['price'], 2) : '-' ?></td>
                 <td>
                   <?php if ((int)$supply['is_active'] === 1): ?>
                     <span class="badge text-bg-success">Activo</span>
@@ -141,6 +143,13 @@ require_once __DIR__ . '/../../core/Pagination.php';
                           <div class="form-text">Selecciona una o mas areas.</div>
                         </div>
                         <div class="mb-3">
+                          <label class="form-label">Precio</label>
+                          <input class="form-control" type="number" name="price" min="0" step="0.01"
+                                 value="<?= Helpers::e($supply['price'] !== null ? (string)$supply['price'] : '') ?>"
+                                 placeholder="Ej: 15.90">
+                          <div class="form-text">Opcional.</div>
+                        </div>
+                        <div class="mb-3">
                           <label class="form-label">Estado</label>
                           <select class="form-select" name="is_active">
                             <option value="1" <?= (int)$supply['is_active'] === 1 ? 'selected' : '' ?>>Activo</option>
@@ -160,7 +169,7 @@ require_once __DIR__ . '/../../core/Pagination.php';
             <?php endforeach; ?>
 
             <?php if (empty($supplies)): ?>
-              <tr><td colspan="5" class="text-muted">No hay insumos registrados con los filtros actuales.</td></tr>
+              <tr><td colspan="6" class="text-muted">No hay insumos registrados con los filtros actuales.</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
@@ -203,6 +212,11 @@ require_once __DIR__ . '/../../core/Pagination.php';
                   <?php endforeach; ?>
                 </div>
                 <div class="form-text">Selecciona una o mas areas.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Precio</label>
+                <input class="form-control" type="number" name="price" min="0" step="0.01" placeholder="Ej: 15.90">
+                <div class="form-text">Opcional.</div>
               </div>
               <div class="mb-3">
                 <label class="form-label">Estado</label>
