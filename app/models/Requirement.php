@@ -71,6 +71,10 @@ class Requirement
       ");
     }
 
+    if (empty($existingItemColumns['detail'])) {
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN detail VARCHAR(255) NULL AFTER item_name");
+    }
+
     self::$schemaEnsured = true;
   }
 
@@ -131,8 +135,8 @@ class Requirement
       $requirementId = (int)$pdo->lastInsertId();
 
       $itemSt = $pdo->prepare("
-        INSERT INTO requirement_items (requirement_id, supply_id, item_name, quantity, unit_measure_id, unit_price, is_purchased)
-        VALUES (?,?,?,?,?,?,0)
+        INSERT INTO requirement_items (requirement_id, supply_id, item_name, detail, quantity, unit_measure_id, unit_price, is_purchased)
+        VALUES (?,?,?,?,?,?,?,0)
       ");
 
       foreach ($items as $item) {
@@ -141,6 +145,7 @@ class Requirement
             $requirementId,
             !empty($item['supply_id']) ? (int)$item['supply_id'] : null,
             $item['item_name'],
+            $item['detail'] ?? null,
             $item['quantity'] ?? null,
             !empty($item['unit_measure_id']) ? (int)$item['unit_measure_id'] : null,
             $item['unit_price'] ?? null,
@@ -148,7 +153,7 @@ class Requirement
           continue;
         }
 
-        $itemSt->execute([$requirementId, null, $item, null, null, null]);
+        $itemSt->execute([$requirementId, null, $item, null, null, null, null]);
       }
 
       $pdo->commit();
@@ -175,6 +180,7 @@ class Requirement
         ri.id AS item_id,
         ri.supply_id,
         ri.item_name,
+        ri.detail,
         ri.quantity,
         ri.unit_measure_id,
         um.name AS unit_measure_name,
@@ -210,6 +216,7 @@ class Requirement
         ri.id AS item_id,
         ri.supply_id,
         ri.item_name,
+        ri.detail,
         ri.quantity,
         ri.unit_measure_id,
         um.name AS unit_measure_name,
@@ -291,19 +298,24 @@ class Requirement
     return trim($name . ' - ' . trim($quantityText . ' ' . $unit));
   }
 
-  public static function sanitizeStructuredItems(array $itemNames, array $supplyIds, array $quantities, array $unitMeasureIds, int $purchaseAreaId = 0): array
+  public static function sanitizeStructuredItems(array $itemNames, array $supplyIds, array $quantities, array $unitMeasureIds, int $purchaseAreaId = 0, array $details = []): array
   {
     self::ensureSchema();
     $uniqueItems = [];
     $duplicates = [];
     $seen = [];
 
-    $max = max(count($itemNames), count($supplyIds), count($quantities), count($unitMeasureIds));
+    $max = max(count($itemNames), count($supplyIds), count($quantities), count($unitMeasureIds), count($details));
     for ($i = 0; $i < $max; $i++) {
       $itemName = preg_replace('/\s+/u', ' ', trim((string)($itemNames[$i] ?? ''))) ?? trim((string)($itemNames[$i] ?? ''));
       $supplyId = (int)($supplyIds[$i] ?? 0);
       $rawQuantity = trim((string)($quantities[$i] ?? ''));
       $unitMeasureId = (int)($unitMeasureIds[$i] ?? 0);
+      $detail = preg_replace('/\s+/u', ' ', trim((string)($details[$i] ?? ''))) ?? trim((string)($details[$i] ?? ''));
+
+      if (function_exists('mb_strlen') ? mb_strlen($detail, 'UTF-8') > 255 : strlen($detail) > 255) {
+        throw new RuntimeException('El detalle no puede superar los 255 caracteres.');
+      }
 
       if ($itemName === '' && $supplyId <= 0 && $rawQuantity === '' && $unitMeasureId <= 0) {
         continue;
@@ -314,12 +326,18 @@ class Requirement
       }
 
       $supplySt = Database::conn()->prepare("
-        SELECT s.id, s.name, s.price
+        SELECT s.id, s.name, s.price, s.purchase_area_id
         FROM supplies s
-        JOIN supply_purchase_areas spa ON spa.supply_id = s.id
         WHERE s.id=?
           AND s.is_active=1
-          AND (? = 0 OR spa.purchase_area_id=?)
+          AND (
+            ? = 0 OR EXISTS (
+              SELECT 1
+              FROM supply_purchase_areas spa
+              WHERE spa.supply_id = s.id
+                AND spa.purchase_area_id=?
+            )
+          )
         LIMIT 1
       ");
       $supplySt->execute([$supplyId, $purchaseAreaId, $purchaseAreaId]);
@@ -349,9 +367,11 @@ class Requirement
       $uniqueItems[] = [
         'supply_id' => $supplyId > 0 ? $supplyId : null,
         'item_name' => $itemName,
+        'detail' => $detail !== '' ? $detail : null,
         'quantity' => $quantity,
         'unit_measure_id' => $unitMeasureId,
         'unit_price' => $supply['price'] !== null ? (float)$supply['price'] : null,
+        'purchase_area_id' => (int)$supply['purchase_area_id'],
       ];
     }
 

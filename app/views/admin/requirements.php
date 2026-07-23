@@ -123,7 +123,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
 
             <div class="modal-body">
               <div class="row g-3">
-                <div class="col-md-6">
+                <div class="col-md-8">
                   <label class="form-label">Trabajador / Administrador</label>
                   <select class="form-select" name="user_id" required>
                     <option value="">Selecciona trabajador o administrador</option>
@@ -131,16 +131,6 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                       <option value="<?= (int)$worker['id'] ?>">
                         <?= Helpers::e(($worker['role'] === 'admin' ? 'Administrador' : 'Trabajador') . ' - ' . $worker['document_number'] . ' - ' . $worker['first_name'] . ' ' . $worker['last_name']) ?>
                       </option>
-                    <?php endforeach; ?>
-                  </select>
-                </div>
-
-                <div class="col-md-6">
-                  <label class="form-label">Area de compra</label>
-                  <select class="form-select" name="purchase_area_id" required id="adminRequirementPurchaseArea">
-                    <option value="">Selecciona area</option>
-                    <?php foreach ($purchaseAreas as $area): ?>
-                      <option value="<?= (int)$area['id'] ?>"><?= Helpers::e($area['name']) ?></option>
                     <?php endforeach; ?>
                   </select>
                 </div>
@@ -162,12 +152,15 @@ $unitMeasuresForJs = array_map(static function ($unit) {
 
               <div id="adminRequirementItems" class="d-flex flex-column gap-2">
                 <div class="row g-2 align-items-start" data-admin-requirement-item>
-                  <div class="col-md-6">
+                  <div class="col-md-4">
                     <input type="hidden" name="supply_ids[]" data-supply-id>
                     <input class="form-control" name="items[]" list="adminRequirementSupplyOptions" placeholder="Escribe y selecciona un insumo" data-supply-name required>
                     <div class="form-text text-danger d-none" data-supply-error>Selecciona un insumo valido del listado.</div>
                   </div>
-                  <div class="col-md-2">
+                  <div class="col-md-3">
+                    <input class="form-control" name="details[]" placeholder="Detalle (opcional)" maxlength="255">
+                  </div>
+                  <div class="col-md-1">
                     <input class="form-control" type="number" name="quantities[]" placeholder="Cant." min="0.01" step="0.01" required>
                   </div>
                   <div class="col-md-3">
@@ -312,6 +305,9 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                             <?= (int)$item['is_purchased'] === 1 ? 'checked' : '' ?>>
                           <label class="form-check-label flex-grow-1">
                             <?= Helpers::e($item['item_name']) ?>
+                            <?php if (!empty($item['detail'])): ?>
+                              <div class="small text-muted">Detalle: <?= Helpers::e($item['detail']) ?></div>
+                            <?php endif; ?>
                             <?php if ($item['quantity'] !== null || !empty($item['unit_measure_name'])): ?>
                               <span class="text-muted small">
                                 -
@@ -362,18 +358,11 @@ $unitMeasuresForJs = array_map(static function ($unit) {
     const requirementUnits = <?= json_encode($unitMeasuresForJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]' ?>;
     const addAdminItemButton = document.getElementById('addAdminRequirementItem');
     const adminItemsContainer = document.getElementById('adminRequirementItems');
-    const purchaseAreaSelect = document.getElementById('adminRequirementPurchaseArea');
     const supplyOptions = document.getElementById('adminRequirementSupplyOptions');
     const forms = document.querySelectorAll('.js-requirement-toggle-form');
 
     function availableSupplies() {
-      const areaId = Number(purchaseAreaSelect?.value || 0);
-      if (!areaId) {
-        return [];
-      }
-      return requirementSupplies.filter(function(supply) {
-        return Array.isArray(supply.area_ids) && supply.area_ids.includes(areaId);
-      });
+      return requirementSupplies;
     }
 
     function refreshSupplyOptions() {
@@ -450,12 +439,15 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       row.className = 'row g-2 align-items-start';
       row.setAttribute('data-admin-requirement-item', '');
       row.innerHTML =
-        '<div class="col-md-6">' +
+        '<div class="col-md-4">' +
           '<input type="hidden" name="supply_ids[]" data-supply-id>' +
           '<input class="form-control" name="items[]" list="adminRequirementSupplyOptions" placeholder="Escribe y selecciona un insumo" data-supply-name required>' +
           '<div class="form-text text-danger d-none" data-supply-error>Selecciona un insumo valido del listado.</div>' +
         '</div>' +
-        '<div class="col-md-2">' +
+        '<div class="col-md-3">' +
+          '<input class="form-control" name="details[]" placeholder="Detalle (opcional)" maxlength="255">' +
+        '</div>' +
+        '<div class="col-md-1">' +
           '<input class="form-control" type="number" name="quantities[]" placeholder="Cant." min="0.01" step="0.01" required>' +
         '</div>' +
         '<div class="col-md-3">' +
@@ -470,16 +462,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       updateRemoveButtons();
     }
 
-    if (purchaseAreaSelect) {
-      purchaseAreaSelect.addEventListener('change', function() {
-        refreshSupplyOptions();
-        document.querySelectorAll('[data-supply-name]').forEach(function(input) {
-          input.value = '';
-          resolveSupply(input);
-        });
-      });
-      refreshSupplyOptions();
-    }
+    refreshSupplyOptions();
 
     if (addAdminItemButton && adminItemsContainer) {
       adminItemsContainer.querySelectorAll('[data-admin-requirement-item]').forEach(bindRequirementItem);
