@@ -140,6 +140,9 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                     <?php if (!empty($item['detail'])): ?>
                       <div class="small text-muted">Detalle: <?= Helpers::e($item['detail']) ?></div>
                     <?php endif; ?>
+                    <?php if (!empty($item['item_created_at'])): ?>
+                      <div class="small text-muted">Hora de registro: <?= Helpers::e(date('H:i', strtotime($item['item_created_at']))) ?></div>
+                    <?php endif; ?>
                     <?php if ((int)$item['is_purchased'] === 1): ?>
                       <span class="badge text-bg-success">Comprado</span>
                     <?php endif; ?>

@@ -308,6 +308,9 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                             <?php if (!empty($item['detail'])): ?>
                               <div class="small text-muted">Detalle: <?= Helpers::e($item['detail']) ?></div>
                             <?php endif; ?>
+                            <?php if (!empty($item['item_created_at'])): ?>
+                              <div class="small text-muted">Hora de registro: <?= Helpers::e(date('H:i', strtotime($item['item_created_at']))) ?></div>
+                            <?php endif; ?>
                             <?php if ($item['quantity'] !== null || !empty($item['unit_measure_name'])): ?>
                               <span class="text-muted small">
                                 -
