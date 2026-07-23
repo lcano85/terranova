@@ -60,6 +60,17 @@ class Requirement
       $pdo->exec("ALTER TABLE requirement_items ADD KEY idx_requirement_items_unit_measure (unit_measure_id)");
     }
 
+    if (empty($existingItemColumns['unit_price'])) {
+      Supply::ensureSchema();
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN unit_price DECIMAL(12,2) NULL AFTER unit_measure_id");
+      $pdo->exec("
+        UPDATE requirement_items ri
+        JOIN supplies s ON s.id = ri.supply_id
+        SET ri.unit_price = s.price
+        WHERE ri.unit_price IS NULL
+      ");
+    }
+
     self::$schemaEnsured = true;
   }
 
@@ -120,8 +131,8 @@ class Requirement
       $requirementId = (int)$pdo->lastInsertId();
 
       $itemSt = $pdo->prepare("
-        INSERT INTO requirement_items (requirement_id, supply_id, item_name, quantity, unit_measure_id, is_purchased)
-        VALUES (?,?,?,?,?,0)
+        INSERT INTO requirement_items (requirement_id, supply_id, item_name, quantity, unit_measure_id, unit_price, is_purchased)
+        VALUES (?,?,?,?,?,?,0)
       ");
 
       foreach ($items as $item) {
@@ -132,11 +143,12 @@ class Requirement
             $item['item_name'],
             $item['quantity'] ?? null,
             !empty($item['unit_measure_id']) ? (int)$item['unit_measure_id'] : null,
+            $item['unit_price'] ?? null,
           ]);
           continue;
         }
 
-        $itemSt->execute([$requirementId, null, $item, null, null]);
+        $itemSt->execute([$requirementId, null, $item, null, null, null]);
       }
 
       $pdo->commit();
@@ -202,11 +214,13 @@ class Requirement
         ri.unit_measure_id,
         um.name AS unit_measure_name,
         um.abbreviation AS unit_measure_abbreviation,
+        COALESCE(ri.unit_price, s.price) AS unit_price,
         ri.is_purchased
       FROM requirements r
       JOIN users u ON u.id = r.user_id
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
+      LEFT JOIN supplies s ON s.id = ri.supply_id
       LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
       WHERE r.week_start=?
         AND u.role IN ('admin', 'worker')
@@ -300,7 +314,7 @@ class Requirement
       }
 
       $supplySt = Database::conn()->prepare("
-        SELECT s.id, s.name
+        SELECT s.id, s.name, s.price
         FROM supplies s
         JOIN supply_purchase_areas spa ON spa.supply_id = s.id
         WHERE s.id=?
@@ -337,6 +351,7 @@ class Requirement
         'item_name' => $itemName,
         'quantity' => $quantity,
         'unit_measure_id' => $unitMeasureId,
+        'unit_price' => $supply['price'] !== null ? (float)$supply['price'] : null,
       ];
     }
 

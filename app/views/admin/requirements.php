@@ -7,6 +7,7 @@ $suppliesForJs = array_map(static function ($supply) {
   return [
     'id' => (int)$supply['id'],
     'name' => (string)$supply['name'],
+    'price' => $supply['price'] !== null ? (float)$supply['price'] : null,
     'area_ids' => array_values(array_filter(array_map('intval', explode(',', (string)($supply['purchase_area_ids'] ?? ''))))),
   ];
 }, $supplies ?? []);
@@ -199,6 +200,36 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       <div class="alert alert-<?= Helpers::e($msg['type']) ?>"><?= Helpers::e($msg['text']) ?></div>
     <?php endif; ?>
 
+    <div class="row g-3 mb-3" data-requirement-week-summary>
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+          <div class="card-body">
+            <div class="text-muted small">Total estimado de la semana</div>
+            <div class="fs-4 fw-semibold" data-week-estimated-total>S/ <?= number_format((float)$weeklyEstimatedTotal, 2) ?></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100 border-success">
+          <div class="card-body">
+            <div class="text-muted small">Total comprado</div>
+            <div class="fs-4 fw-semibold text-success" data-week-purchased-total>S/ <?= number_format((float)$weeklyPurchasedTotal, 2) ?></div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card shadow-sm h-100 border-warning">
+          <div class="card-body">
+            <div class="text-muted small">Total pendiente</div>
+            <div class="fs-4 fw-semibold text-warning" data-week-pending-total>S/ <?= number_format(max(0, (float)$weeklyEstimatedTotal - (float)$weeklyPurchasedTotal), 2) ?></div>
+            <?php if ((int)$weeklyUnpricedItems > 0): ?>
+              <div class="small text-danger mt-1"><?= (int)$weeklyUnpricedItems ?> producto(s) sin precio o cantidad no incluidos.</div>
+            <?php endif; ?>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <?php if (empty($grouped)): ?>
       <div class="card shadow-sm">
         <div class="card-body text-muted">No hay requerimientos registrados para la semana seleccionada.</div>
@@ -231,6 +262,8 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                 <div class="text-muted small">
                   <span data-worker-purchased-count><?= (int)$workerPurchasedItems ?></span> comprado(s) /
                   <span data-worker-total-count><?= (int)$workerTotalItems ?></span> producto(s)
+                  &middot; Total: S/ <?= number_format((float)$worker['estimated_total'], 2) ?>
+                  &middot; Comprado: <span data-worker-purchased-total>S/ <?= number_format((float)$worker['purchased_total'], 2) ?></span>
                 </div>
               </div>
               <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -247,7 +280,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
           <div class="card-body">
 
             <?php foreach ($worker['areas'] as $area): ?>
-              <div class="border rounded p-3 mb-3">
+              <div class="border rounded p-3 mb-3" data-requirement-area>
                 <div class="d-flex justify-content-between align-items-center mb-2">
                   <div>
                     <div class="fw-semibold text-capitalize">Area de compra: <?= Helpers::e($area['purchase_area_name']) ?></div>
@@ -255,12 +288,16 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                       <?= ($area['status'] ?? '') === 'draft' ? 'Borrador' : 'Enviado' ?>
                     </span>
                   </div>
-                  <div class="text-muted small">Fecha: <?= Helpers::e(date('d/m/Y', strtotime($area['required_date']))) ?></div>
+                  <div class="text-end">
+                    <div class="text-muted small">Fecha: <?= Helpers::e(date('d/m/Y', strtotime($area['required_date']))) ?></div>
+                    <div class="fw-semibold">Subtotal: S/ <?= number_format((float)$area['estimated_total'], 2) ?></div>
+                    <div class="small text-success">Comprado: <span data-area-purchased-total>S/ <?= number_format((float)$area['purchased_total'], 2) ?></span></div>
+                  </div>
                 </div>
 
                 <div class="d-flex flex-column gap-2">
                   <?php foreach ($area['items'] as $item): ?>
-                    <div class="border rounded px-3 py-2">
+                    <div class="border rounded px-3 py-2" data-requirement-item data-subtotal="<?= $item['subtotal'] !== null ? Helpers::e(number_format((float)$item['subtotal'], 2, '.', '')) : '' ?>">
                       <div class="d-flex align-items-center gap-2">
                         <form method="POST" action="<?= Helpers::e(BASE_URL . '/admin/requirements') ?>" class="js-requirement-toggle-form form-check d-flex align-items-center gap-2 flex-grow-1 mb-0">
                           <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
@@ -283,6 +320,16 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                               </span>
                             <?php endif; ?>
                           </label>
+                          <div class="text-end small" style="min-width: 150px;">
+                            <?php if ($item['unit_price'] !== null): ?>
+                              <div class="text-muted">Precio: S/ <?= number_format((float)$item['unit_price'], 2) ?></div>
+                              <?php if ($item['subtotal'] !== null): ?>
+                                <div class="fw-semibold">Subtotal: S/ <?= number_format((float)$item['subtotal'], 2) ?></div>
+                              <?php endif; ?>
+                            <?php else: ?>
+                              <span class="badge text-bg-danger">Sin precio</span>
+                            <?php endif; ?>
+                          </div>
                           <span class="js-purchase-status badge text-bg-<?= (int)$item['is_purchased'] === 1 ? 'success' : 'secondary' ?>">
                             <?= (int)$item['is_purchased'] === 1 ? 'Comprado' : 'Pendiente' ?>
                           </span>
@@ -486,6 +533,53 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       }
     }
 
+    function formatCurrency(value) {
+      return 'S/ ' + Number(value || 0).toLocaleString('es-PE', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    }
+
+    function purchasedTotal(container) {
+      return Array.from(container.querySelectorAll('[data-requirement-item]')).reduce(function(total, item) {
+        const toggle = item.querySelector('[data-role="purchase-toggle"]');
+        const subtotal = Number(item.dataset.subtotal || 0);
+        return total + (toggle?.checked ? subtotal : 0);
+      }, 0);
+    }
+
+    function updateFinancialSummary() {
+      document.querySelectorAll('[data-requirement-area]').forEach(function(area) {
+        const target = area.querySelector('[data-area-purchased-total]');
+        if (target) {
+          target.textContent = formatCurrency(purchasedTotal(area));
+        }
+      });
+
+      document.querySelectorAll('[data-requirement-worker-card]').forEach(function(card) {
+        const target = card.querySelector('[data-worker-purchased-total]');
+        if (target) {
+          target.textContent = formatCurrency(purchasedTotal(card));
+        }
+      });
+
+      const page = document.querySelector('[data-requirement-week-summary]')?.parentElement;
+      if (!page) {
+        return;
+      }
+      const estimatedText = document.querySelector('[data-week-estimated-total]')?.textContent || '';
+      const estimated = Number(estimatedText.replace(/[^0-9.-]/g, '')) || 0;
+      const purchased = purchasedTotal(page);
+      const purchasedTarget = document.querySelector('[data-week-purchased-total]');
+      const pendingTarget = document.querySelector('[data-week-pending-total]');
+      if (purchasedTarget) {
+        purchasedTarget.textContent = formatCurrency(purchased);
+      }
+      if (pendingTarget) {
+        pendingTarget.textContent = formatCurrency(Math.max(0, estimated - purchased));
+      }
+    }
+
     forms.forEach(function(form) {
       const checkbox = form.querySelector('[data-role="purchase-toggle"]');
       const statusBadge = form.querySelector('.js-purchase-status');
@@ -534,9 +628,11 @@ $unitMeasuresForJs = array_map(static function ($unit) {
           statusBadge.classList.remove('text-bg-success', 'text-bg-secondary');
           statusBadge.classList.add(purchased ? 'text-bg-success' : 'text-bg-secondary');
           updateWorkerSummary(form);
+          updateFinancialSummary();
         } catch (error) {
           checkbox.checked = previousChecked;
           updateWorkerSummary(form);
+          updateFinancialSummary();
           window.alert(error.message || 'No se pudo actualizar el item.');
         } finally {
           checkbox.disabled = false;

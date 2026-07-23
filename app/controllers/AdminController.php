@@ -676,13 +676,32 @@ class AdminController extends Controller
     $defaultRequirementDate = ($today >= $week['from'] && $today <= $week['to']) ? $today : $week['from'];
     $mailLogs = array_slice($this->requirementMailLogs(), 0, 10);
     $grouped = [];
+    $weeklyEstimatedTotal = 0.0;
+    $weeklyPurchasedTotal = 0.0;
+    $weeklyUnpricedItems = 0;
 
     foreach ($rows as $row) {
+      $hasCalculablePrice = $row['unit_price'] !== null && $row['quantity'] !== null;
+      $row['subtotal'] = $hasCalculablePrice
+        ? round((float)$row['unit_price'] * (float)$row['quantity'], 2)
+        : null;
+
+      if ($row['subtotal'] === null) {
+        $weeklyUnpricedItems++;
+      } else {
+        $weeklyEstimatedTotal += $row['subtotal'];
+        if ((int)$row['is_purchased'] === 1) {
+          $weeklyPurchasedTotal += $row['subtotal'];
+        }
+      }
+
       $workerKey = (int)$row['user_id'];
       if (!isset($grouped[$workerKey])) {
         $grouped[$workerKey] = [
           'worker_name' => trim($row['first_name'] . ' ' . $row['last_name']),
           'user_role' => $row['user_role'] ?? 'worker',
+          'estimated_total' => 0.0,
+          'purchased_total' => 0.0,
           'areas' => []
         ];
       }
@@ -693,11 +712,21 @@ class AdminController extends Controller
           'required_date' => $row['required_date'],
           'purchase_area_name' => $row['purchase_area_name'],
           'status' => $row['status'] ?? 'submitted',
+          'estimated_total' => 0.0,
+          'purchased_total' => 0.0,
           'items' => []
         ];
       }
 
       $grouped[$workerKey]['areas'][$areaKey]['items'][] = $row;
+      if ($row['subtotal'] !== null) {
+        $grouped[$workerKey]['estimated_total'] += $row['subtotal'];
+        $grouped[$workerKey]['areas'][$areaKey]['estimated_total'] += $row['subtotal'];
+        if ((int)$row['is_purchased'] === 1) {
+          $grouped[$workerKey]['purchased_total'] += $row['subtotal'];
+          $grouped[$workerKey]['areas'][$areaKey]['purchased_total'] += $row['subtotal'];
+        }
+      }
     }
 
     $this->view('admin/requirements', compact(
@@ -711,7 +740,10 @@ class AdminController extends Controller
       'purchaseAreas',
       'supplies',
       'unitMeasures',
-      'defaultRequirementDate'
+      'defaultRequirementDate',
+      'weeklyEstimatedTotal',
+      'weeklyPurchasedTotal',
+      'weeklyUnpricedItems'
     ));
   }
 
