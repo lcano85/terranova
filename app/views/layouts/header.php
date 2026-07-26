@@ -33,6 +33,17 @@ require_once __DIR__ . '/../../core/Auth.php';
       backdrop-filter: blur(10px);
     }
     .nav-link.active { font-weight: 600; background: #f3f4f6; border-radius: .5rem; }
+    .security-menu-label {
+      color: #495057;
+      font-size: .82rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+      padding-top: .65rem;
+      padding-bottom: .35rem;
+      text-transform: uppercase;
+    }
+    .security-menu-label.active { color: #0d6efd; }
+    .security-submenu { border-left: 1px solid #e9ecef; margin-left: .75rem; }
     .page-toolbar {
       display: flex;
       justify-content: space-between;

@@ -122,8 +122,10 @@ class User
   public static function createWorker(array $d): int
   {
     self::ensureSchema();
-    $pass = (string)($d['password'] ?? '');
-    if ($pass === '') $pass = '123456';
+    $pass = trim((string)($d['password'] ?? ''));
+    if (strlen($pass) < 8) {
+      throw new InvalidArgumentException('La clave debe tener al menos 8 caracteres.');
+    }
 
     $hash = password_hash($pass, PASSWORD_BCRYPT);
     $isActive = isset($d['is_active']) ? (int)$d['is_active'] : 1;
@@ -161,6 +163,9 @@ class User
     $pass = trim((string)($d['password'] ?? ''));
 
     if ($pass !== '') {
+      if (strlen($pass) < 8) {
+        throw new InvalidArgumentException('La clave debe tener al menos 8 caracteres.');
+      }
       $hash = password_hash($pass, PASSWORD_BCRYPT);
 
       $st = $pdo->prepare("

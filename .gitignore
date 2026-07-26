@@ -10,3 +10,7 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Credenciales y configuracion local
+app/config/database.local.php
+app/config/mail.local.php

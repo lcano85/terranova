@@ -1,7 +1,15 @@
 RewriteEngine On
 
+<IfModule mod_headers.c>
+  Header always unset X-Powered-By
+</IfModule>
+
 # No tocar SSL
 RewriteRule ^\.well-known/ - [L]
+
+# Bloquear acceso web directo a codigo, configuracion y metadatos.
+RewriteRule ^(?:app|vendor|sql|\.git|\.agents|\.codex)(?:/|$) - [F,L,NC]
+RewriteRule ^(?:composer\.(?:json|lock)|\.gitignore)$ - [F,L,NC]
 
 # Si existe archivo o carpeta real, servirlo
 RewriteCond %{REQUEST_FILENAME} -f [OR]

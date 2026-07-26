@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../models/User.php';
+require_once __DIR__ . '/../models/Security.php';
 
 class Auth {
   private const ADMIN_SESSION_TTL = 7200;
@@ -16,6 +17,9 @@ class Auth {
   }
 
   public static function login(array $u): void {
+    Security::ensureSchema();
+    session_regenerate_id(true);
+    unset($_SESSION['_csrf']);
     $_SESSION['user'] = [
       'id' => (int)$u['id'],
       'document_type' => $u['document_type'],
@@ -23,6 +27,7 @@ class Auth {
       'first_name' => $u['first_name'],
       'last_name' => $u['last_name'],
       'role' => $u['role'],
+      'security_role_id' => $u['security_role_id'] ?? null,
       'is_active' => $u['is_active'] ?? 1,
       'shift_id' => $u['shift_id'] ?? null,
     ];
@@ -35,7 +40,22 @@ class Auth {
   }
 
   public static function logout(): void {
-    unset($_SESSION['user']);
+    $u = $_SESSION['user'] ?? null;
+    if (!empty($u['id'])) {
+      Security::log((int)$u['id'], 'logout', '/logout', 'Cerrar sesión');
+    }
+    $_SESSION = [];
+    if (ini_get('session.use_cookies')) {
+      $params = session_get_cookie_params();
+      setcookie(session_name(), '', [
+        'expires' => time() - 42000,
+        'path' => $params['path'],
+        'domain' => $params['domain'],
+        'secure' => $params['secure'],
+        'httponly' => $params['httponly'],
+        'samesite' => $params['samesite'] ?? 'Lax',
+      ]);
+    }
     session_destroy();
   }
 
@@ -58,15 +78,38 @@ class Auth {
   public static function requireRole(string $role): void {
     self::requireLogin();
     $u = self::user();
+    if (($u['role'] ?? '') === $role) {
+      return;
+    }
+
+    $path = rtrim(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH), '/') ?: '/';
+    if ($role === 'admin' && ($path === '/admin' || str_starts_with($path, '/admin/')) && Security::canAccessPath((int)$u['id'], $path)) {
+      return;
+    }
+
     if (($u['role'] ?? '') !== $role) {
       http_response_code(403);
       exit('403 - Acceso denegado');
     }
   }
 
+  public static function requirePermission(string $permissionKey): void {
+    self::requireLogin();
+    $u = self::user();
+    if (!Security::hasPermission((int)$u['id'], $permissionKey)) {
+      http_response_code(403);
+      exit('403 - No tienes permiso para acceder a este módulo');
+    }
+  }
+
   public static function canManageLeadDinner(): bool {
     $u = self::user();
-    return ($u['role'] ?? '') === 'admin'
+    if (empty($u['id'])) {
+      return false;
+    }
+    return Security::hasPermission((int)$u['id'], 'admin.lead_entries')
+      || Security::hasPermission((int)$u['id'], 'worker.leads')
+      || ($u['role'] ?? '') === 'admin'
       || (
         ($u['role'] ?? '') === 'worker'
         && (string)($u['document_number'] ?? '') === self::LEAD_DINNER_MANAGER_DOCUMENT
@@ -75,7 +118,12 @@ class Auth {
 
   public static function canManageBeverages(): bool {
     $u = self::user();
-    return ($u['role'] ?? '') === 'admin'
+    if (empty($u['id'])) {
+      return false;
+    }
+    return Security::hasPermission((int)$u['id'], 'admin.beverages')
+      || Security::hasPermission((int)$u['id'], 'worker.beverages')
+      || ($u['role'] ?? '') === 'admin'
       || (
         ($u['role'] ?? '') === 'worker'
         && (string)($u['document_number'] ?? '') === self::LEAD_DINNER_MANAGER_DOCUMENT

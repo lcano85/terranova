@@ -45,6 +45,10 @@ class App {
       '/admin/leads-cena-campaigns' => ['AdminController', 'leadDinnerCampaigns'],
       '/admin/leads-cena-statuses' => ['AdminController', 'leadDinnerStatuses'],
       '/admin/profile' => ['AdminController', 'profile'],
+      '/admin/security/users' => ['SecurityController', 'users'],
+      '/admin/security/roles' => ['SecurityController', 'roles'],
+      '/admin/security/permissions' => ['SecurityController', 'permissions'],
+      '/admin/security/logs' => ['SecurityController', 'logs'],
 
       // Público: ver promoción del día (para la pantalla de marcación)
       '/promotions/today' => ['PromotionsController', 'today'],
@@ -70,6 +74,20 @@ class App {
     }
 
     [$controller, $method] = $routes[$path];
+
+    $sessionUser = Auth::user();
+    if ($sessionUser && (str_starts_with($path, '/admin') || str_starts_with($path, '/worker'))) {
+      require_once __DIR__ . '/../models/Security.php';
+      if (!Security::canAccessPath((int)$sessionUser['id'], $path)) {
+        Security::log((int)$sessionUser['id'], 'access_denied', $path, null, 'Permiso insuficiente');
+        http_response_code(403);
+        echo '403 - No tienes permiso para acceder a este módulo';
+        return;
+      }
+      if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+        Security::logModuleAccess((int)$sessionUser['id'], $path);
+      }
+    }
 
     require_once __DIR__ . '/../controllers/' . $controller . '.php';
     $instance = new $controller();

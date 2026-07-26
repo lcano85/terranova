@@ -37,6 +37,9 @@ class LeadDinnerController extends Controller
     if ($tmp === '' || !is_uploaded_file($tmp)) {
       throw new RuntimeException('El voucher subido no es valido.');
     }
+    if ((int)($file['size'] ?? 0) <= 0 || (int)$file['size'] > 10 * 1024 * 1024) {
+      throw new RuntimeException('El voucher debe pesar como maximo 10 MB.');
+    }
 
     $originalName = (string)($file['name'] ?? 'voucher');
     $ext = strtolower((string)pathinfo($originalName, PATHINFO_EXTENSION));
@@ -73,10 +76,12 @@ class LeadDinnerController extends Controller
       'image/heif-sequence' => 'heif',
     ];
 
-    $normalizedExt = $allowedByExtension[$ext] ?? ($allowedByMime[$mime] ?? '');
-    if ($normalizedExt === '') {
+    $extensionType = $allowedByExtension[$ext] ?? '';
+    $mimeType = $allowedByMime[$mime] ?? '';
+    if ($extensionType === '' || $mimeType === '' || $extensionType !== $mimeType) {
       throw new RuntimeException('El voucher debe ser JPG, PNG, WEBP, HEIC, HEIF o PDF.');
     }
+    $normalizedExt = $extensionType;
 
     $dir = dirname(__DIR__, 2) . '/uploads/leads-cena';
     if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
