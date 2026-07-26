@@ -3,6 +3,7 @@ require_once __DIR__ . '/../core/Controller.php';
 require_once __DIR__ . '/../core/Auth.php';
 require_once __DIR__ . '/../core/Csrf.php';
 require_once __DIR__ . '/../core/Helpers.php';
+require_once __DIR__ . '/../core/Pagination.php';
 require_once __DIR__ . '/../models/Security.php';
 
 class SecurityController extends Controller
@@ -71,8 +72,30 @@ class SecurityController extends Controller
       'date_from' => trim((string)($_GET['date_from'] ?? '')),
       'date_to' => trim((string)($_GET['date_to'] ?? '')),
     ];
-    $logs = Security::logs($filters);
+    foreach (['date_from', 'date_to'] as $dateFilter) {
+      $date = DateTimeImmutable::createFromFormat('!Y-m-d', $filters[$dateFilter]);
+      if ($filters[$dateFilter] !== '' && (!$date || $date->format('Y-m-d') !== $filters[$dateFilter])) {
+        $filters[$dateFilter] = '';
+      }
+    }
+    $allowedPerPage = [10, 20, 50, 100];
+    $perPage = (int)($_GET['logs_per_page'] ?? 20);
+    if (!in_array($perPage, $allowedPerPage, true)) {
+      $perPage = 20;
+    }
+    $page = max(1, (int)($_GET['logs_page'] ?? 1));
+    $result = Security::paginatedLogs($filters, $page, $perPage);
+    $logs = $result['rows'];
+    $logsPaginationMeta = [
+      'page' => $result['page'],
+      'per_page' => $result['per_page'],
+      'total' => $result['total'],
+      'total_pages' => $result['total_pages'],
+      'page_param' => 'logs_page',
+      'per_page_param' => 'logs_per_page',
+      'allowed_per_page' => $allowedPerPage,
+    ];
     $users = Security::users();
-    $this->view('security/logs', compact('logs', 'users', 'filters'));
+    $this->view('security/logs', compact('logs', 'users', 'filters', 'logsPaginationMeta'));
   }
 }

@@ -522,7 +522,7 @@ class Security
     return (int)$st->fetchColumn() >= $maxAttempts;
   }
 
-  public static function logs(array $filters = [], int $limit = 500): array
+  public static function paginatedLogs(array $filters = [], int $page = 1, int $perPage = 20): array
   {
     self::ensureSchema();
     $where = ['1=1'];
@@ -536,25 +536,45 @@ class Security
       $params[] = (int)$filters['user_id'];
     }
     if (!empty($filters['date_from'])) {
-      $where[] = 'DATE(l.created_at)>=?';
-      $params[] = $filters['date_from'];
+      $where[] = 'l.created_at>=?';
+      $params[] = $filters['date_from'] . ' 00:00:00';
     }
     if (!empty($filters['date_to'])) {
-      $where[] = 'DATE(l.created_at)<=?';
-      $params[] = $filters['date_to'];
+      $where[] = 'l.created_at<?';
+      $params[] = date('Y-m-d 00:00:00', strtotime($filters['date_to'] . ' +1 day'));
     }
-    $limit = max(1, min(1000, $limit));
+
+    $whereSql = implode(' AND ', $where);
+    $count = Database::conn()->prepare("
+      SELECT COUNT(*)
+      FROM security_logs l
+      WHERE {$whereSql}
+    ");
+    $count->execute($params);
+    $total = (int)$count->fetchColumn();
+
+    $perPage = max(1, min(100, $perPage));
+    $totalPages = max(1, (int)ceil($total / $perPage));
+    $page = max(1, min($page, $totalPages));
+    $offset = ($page - 1) * $perPage;
+
     $st = Database::conn()->prepare("
       SELECT l.*, CONCAT(COALESCE(u.first_name,''), ' ', COALESCE(u.last_name,'')) AS user_name,
              u.document_number
       FROM security_logs l
       LEFT JOIN users u ON u.id=l.user_id
-      WHERE " . implode(' AND ', $where) . "
+      WHERE {$whereSql}
       ORDER BY l.id DESC
-      LIMIT {$limit}
+      LIMIT {$perPage} OFFSET {$offset}
     ");
     $st->execute($params);
-    return $st->fetchAll();
+    return [
+      'rows' => $st->fetchAll(),
+      'page' => $page,
+      'per_page' => $perPage,
+      'total' => $total,
+      'total_pages' => $totalPages,
+    ];
   }
 
   private static function slug(string $value): string

@@ -35,6 +35,9 @@ Auth::requirePermission('security.logs');
           <?php if (empty($logs)): ?><tr><td colspan="7" class="text-muted">No hay eventos con estos filtros.</td></tr><?php endif; ?>
         </tbody>
       </table>
+    </div>
+    <div class="card-footer bg-white">
+      <?= Pagination::render($logsPaginationMeta) ?>
     </div></div>
   </div>
 </div>
