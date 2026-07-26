@@ -26,22 +26,32 @@ class AuthController extends Controller
       $docNumber = trim($_POST['document_number'] ?? '');
       $pass = $_POST['password'] ?? '';
 
+      if (Security::isLoginBlocked($docNumber)) {
+        Security::log(null, 'login_blocked', '/login', 'Inicio de sesión', 'Documento: ' . $docNumber);
+        $error = 'Demasiados intentos. Espera 15 minutos antes de volver a intentar.';
+        $this->view('auth/login', compact('error'));
+        return;
+      }
+
       $u = User::findByDoc($docType, $docNumber);
 
       if (!$u || (($u['role'] ?? '') === 'worker' && (int)($u['is_active'] ?? 1) !== 1)) {
-        $error = 'No existe ese trabajador';
+        Security::log($u ? (int)$u['id'] : null, 'login_failed', '/login', 'Inicio de sesión', 'Documento: ' . $docNumber . '; usuario inexistente o inactivo');
+        $error = 'Credenciales inválidas';
         $this->view('auth/login', compact('error'));
         return;
       }
 
       if (!password_verify($pass, $u['password_hash'])) {
-        $error = "Credenciales inválidas";
+        Security::log((int)$u['id'], 'login_failed', '/login', 'Inicio de sesión', 'Documento: ' . $docNumber . '; contraseña incorrecta');
+        $error = 'Credenciales inválidas';
         $this->view('auth/login', compact('error'));
         return; // ✅ return sin valor
       }
 
 
       Auth::login($u);
+      Security::log((int)$u['id'], 'login_success', '/login', 'Inicio de sesión');
       Helpers::redirect(($u['role'] === 'admin') ? '/admin' : '/worker');
     }
 

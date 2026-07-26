@@ -143,7 +143,7 @@ $workersPaginationMeta = $workersPagination['meta'];
 
                           <div class="col-md-12">
                             <label class="form-label">Nueva clave (opcional)</label>
-                            <input type="password" class="form-control" name="password" placeholder="Dejar vacío para no cambiar">
+                            <input type="password" class="form-control" name="password" minlength="8" autocomplete="new-password" placeholder="Dejar vacío para no cambiar">
                           </div>
                         </div>
                       </div>
@@ -239,8 +239,8 @@ $workersPaginationMeta = $workersPagination['meta'];
 
                 <div class="col-md-12">
                   <label class="form-label">Clave</label>
-                  <input type="password" class="form-control" name="password" value="123456" required>
-                  <div class="text-muted small mt-1">Puedes cambiarla luego (sí, ya sé… 123456 😄)</div>
+                  <input type="password" class="form-control" name="password" minlength="8" autocomplete="new-password" required>
+                  <div class="text-muted small mt-1">Usa al menos 8 caracteres y entrega la clave de forma segura.</div>
                 </div>
               </div>
             </div>

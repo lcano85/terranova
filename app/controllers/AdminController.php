@@ -87,9 +87,20 @@ class AdminController extends Controller
     if (strtolower(pathinfo($name, PATHINFO_EXTENSION)) !== 'xlsx') {
       throw new RuntimeException('Solo se permiten archivos .xlsx.');
     }
+    $tmp = (string)($file['tmp_name'] ?? '');
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+      throw new RuntimeException('El archivo subido no es valido.');
+    }
+    if ((int)($file['size'] ?? 0) <= 0 || (int)$file['size'] > 10 * 1024 * 1024) {
+      throw new RuntimeException('El archivo debe pesar como maximo 10 MB.');
+    }
+    $signature = file_get_contents($tmp, false, null, 0, 4);
+    if ($signature !== "PK\x03\x04") {
+      throw new RuntimeException('El contenido no corresponde a un archivo .xlsx valido.');
+    }
 
     return [
-      'tmp_name' => (string)$file['tmp_name'],
+      'tmp_name' => $tmp,
       'name' => $name,
     ];
   }
@@ -114,6 +125,9 @@ class AdminController extends Controller
     if ($tmp === '' || !is_uploaded_file($tmp)) {
       throw new RuntimeException('El voucher subido no es valido.');
     }
+    if ((int)($file['size'] ?? 0) <= 0 || (int)$file['size'] > 10 * 1024 * 1024) {
+      throw new RuntimeException('El voucher debe pesar como maximo 10 MB.');
+    }
 
     $originalName = (string)($file['name'] ?? 'voucher');
     $extension = strtolower((string)pathinfo($originalName, PATHINFO_EXTENSION));
@@ -128,6 +142,26 @@ class AdminController extends Controller
     ];
     if (!isset($allowed[$extension])) {
       throw new RuntimeException('El voucher debe ser JPG, PNG, WEBP, HEIC, HEIF o PDF.');
+    }
+    $mime = '';
+    if (function_exists('finfo_open')) {
+      $finfo = finfo_open(FILEINFO_MIME_TYPE);
+      if ($finfo !== false) {
+        $mime = strtolower((string)finfo_file($finfo, $tmp));
+        finfo_close($finfo);
+      }
+    }
+    $allowedMimes = [
+      'jpg' => ['image/jpeg'],
+      'jpeg' => ['image/jpeg'],
+      'png' => ['image/png'],
+      'webp' => ['image/webp'],
+      'pdf' => ['application/pdf'],
+      'heic' => ['image/heic', 'image/heic-sequence', 'application/octet-stream'],
+      'heif' => ['image/heif', 'image/heif-sequence', 'application/octet-stream'],
+    ];
+    if ($mime !== '' && !in_array($mime, $allowedMimes[$extension] ?? [], true)) {
+      throw new RuntimeException('El contenido del voucher no coincide con su extension.');
     }
 
     $directory = dirname(__DIR__, 2) . '/uploads/leads-cena';
@@ -332,7 +366,7 @@ class AdminController extends Controller
             'shift_id' => (int)($_POST['shift_id'] ?? 0),
             'area_id' => (int)($_POST['area_id'] ?? 0),
             'is_active' => isset($_POST['is_active']) ? 1 : 0,
-            'password' => $_POST['password'] ?? '123456'
+            'password' => $_POST['password'] ?? ''
           ]);
           // Pago diario (opcional)
           $dailyRate = isset($_POST['daily_rate']) && $_POST['daily_rate'] !== '' ? (float)$_POST['daily_rate'] : null;

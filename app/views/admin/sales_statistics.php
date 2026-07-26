@@ -229,7 +229,7 @@ $annualUnits = array_sum($unitsByMonth);
   const productData = <?= json_encode(array_map(static fn(array $product): array => [
     'label' => $product['name'],
     'data' => array_values(array_map(static fn(array $month): float => $month['units'], $product['months'])),
-  ], $chartProducts), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>;
+  ], $chartProducts), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
   const productCanvas = document.getElementById('productSalesChart');
   new Chart(productCanvas, {
     type: 'line',

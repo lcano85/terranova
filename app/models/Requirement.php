@@ -185,6 +185,7 @@ class Requirement
         ri.unit_measure_id,
         um.name AS unit_measure_name,
         um.abbreviation AS unit_measure_abbreviation,
+        ri.created_at AS item_created_at,
         ri.is_purchased
       FROM requirements r
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
@@ -222,6 +223,7 @@ class Requirement
         um.name AS unit_measure_name,
         um.abbreviation AS unit_measure_abbreviation,
         COALESCE(ri.unit_price, s.price) AS unit_price,
+        ri.created_at AS item_created_at,
         ri.is_purchased
       FROM requirements r
       JOIN users u ON u.id = r.user_id

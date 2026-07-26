@@ -308,6 +308,9 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                             <?php if (!empty($item['detail'])): ?>
                               <div class="small text-muted">Detalle: <?= Helpers::e($item['detail']) ?></div>
                             <?php endif; ?>
+                            <?php if (!empty($item['item_created_at'])): ?>
+                              <div class="small text-muted">Hora de registro: <?= Helpers::e(date('H:i', strtotime($item['item_created_at']))) ?></div>
+                            <?php endif; ?>
                             <?php if ($item['quantity'] !== null || !empty($item['unit_measure_name'])): ?>
                               <span class="text-muted small">
                                 -
@@ -354,8 +357,8 @@ $unitMeasuresForJs = array_map(static function ($unit) {
 </div>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
-    const requirementSupplies = <?= json_encode($suppliesForJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]' ?>;
-    const requirementUnits = <?= json_encode($unitMeasuresForJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '[]' ?>;
+    const requirementSupplies = <?= json_encode($suppliesForJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '[]' ?>;
+    const requirementUnits = <?= json_encode($unitMeasuresForJs, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?: '[]' ?>;
     const addAdminItemButton = document.getElementById('addAdminRequirementItem');
     const adminItemsContainer = document.getElementById('adminRequirementItems');
     const supplyOptions = document.getElementById('adminRequirementSupplyOptions');
