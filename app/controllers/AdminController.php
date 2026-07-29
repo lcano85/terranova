@@ -28,6 +28,7 @@ require_once __DIR__ . '/../models/MailNotificationLog.php';
 require_once __DIR__ . '/../models/LeadDinnerStatus.php';
 require_once __DIR__ . '/../models/LeadDinnerEntry.php';
 require_once __DIR__ . '/../models/LeadDinnerCampaign.php';
+require_once __DIR__ . '/../models/FinanceSummary.php';
 require_once __DIR__ . '/../core/XlsxReader.php';
 
 class AdminController extends Controller
@@ -1069,6 +1070,38 @@ class AdminController extends Controller
       ORDER BY created_at DESC, id DESC
       LIMIT 20
     ")->fetchAll();
+  }
+
+  public function incomeExpenses(): void
+  {
+    Auth::requireRole('admin');
+
+    $currentYear = (int)date('Y');
+    $selectedYear = filter_var(
+      $_GET['year'] ?? $currentYear,
+      FILTER_VALIDATE_INT,
+      ['options' => ['min_range' => 2000, 'max_range' => 2100]]
+    );
+    $selectedYear = $selectedYear !== false ? (int)$selectedYear : $currentYear;
+
+    $years = FinanceSummary::availableYears();
+    foreach ([$currentYear, $selectedYear] as $year) {
+      if (!in_array($year, $years, true)) {
+        $years[] = $year;
+      }
+    }
+    rsort($years, SORT_NUMERIC);
+
+    $months = FinanceSummary::monthlyForYear($selectedYear);
+    $annual = [
+      'personnel' => round(array_sum(array_column($months, 'personnel')), 2),
+      'purchases' => round(array_sum(array_column($months, 'purchases')), 2),
+      'sales' => round(array_sum(array_column($months, 'sales')), 2),
+    ];
+    $annual['expenses'] = round($annual['personnel'] + $annual['purchases'], 2);
+    $annual['balance'] = round($annual['sales'] - $annual['expenses'], 2);
+
+    $this->view('admin/income_expenses', compact('selectedYear', 'years', 'months', 'annual'));
   }
 
   public function activities(): void
