@@ -1877,9 +1877,12 @@ class AdminController extends Controller
       }
     }
 
+    $search = trim((string)($_GET['q'] ?? ''));
     $products = Product::activeList();
-    $costings = Costing::all();
-    $this->view('admin/costing', compact('msg', 'products', 'costings'));
+    $recipes = Recipe::allForAdmin(null, 'approved');
+    $supplies = Supply::activeForRequirements();
+    $costings = Costing::all($search);
+    $this->view('admin/costing', compact('msg', 'products', 'recipes', 'supplies', 'costings', 'search'));
   }
 
   public function recipes(): void
