@@ -107,7 +107,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
     </div>
 
     <div class="modal fade" id="createRequirementModal" tabindex="-1" aria-labelledby="createRequirementModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
           <form method="POST">
             <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
@@ -160,10 +160,10 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                   <div class="col-md-3">
                     <input class="form-control" name="details[]" placeholder="Detalle (opcional)" maxlength="255">
                   </div>
-                  <div class="col-md-1">
-                    <input class="form-control" type="number" name="quantities[]" placeholder="Cant." min="0.01" step="0.01" required>
+                  <div class="col-md-2">
+                    <input class="form-control" type="number" name="quantities[]" placeholder="Cantidad" min="0.01" step="0.01" required aria-label="Cantidad">
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <select class="form-select" name="unit_measure_ids[]" required data-unit-select>
                       <option value="">Unidad</option>
                       <?php foreach ($unitMeasures as $unit): ?>
@@ -453,10 +453,10 @@ $unitMeasuresForJs = array_map(static function ($unit) {
         '<div class="col-md-3">' +
           '<input class="form-control" name="details[]" placeholder="Detalle (opcional)" maxlength="255">' +
         '</div>' +
-        '<div class="col-md-1">' +
-          '<input class="form-control" type="number" name="quantities[]" placeholder="Cant." min="0.01" step="0.01" required>' +
+        '<div class="col-md-2">' +
+          '<input class="form-control" type="number" name="quantities[]" placeholder="Cantidad" min="0.01" step="0.01" required aria-label="Cantidad">' +
         '</div>' +
-        '<div class="col-md-3">' +
+        '<div class="col-md-2">' +
           '<select class="form-select" name="unit_measure_ids[]" required data-unit-select>' + unitOptionsHtml() + '</select>' +
         '</div>' +
         '<div class="col-md-1 d-grid">' +
