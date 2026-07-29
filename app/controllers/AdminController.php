@@ -29,6 +29,7 @@ require_once __DIR__ . '/../models/LeadDinnerStatus.php';
 require_once __DIR__ . '/../models/LeadDinnerEntry.php';
 require_once __DIR__ . '/../models/LeadDinnerCampaign.php';
 require_once __DIR__ . '/../models/FinanceSummary.php';
+require_once __DIR__ . '/../models/OtherExpense.php';
 require_once __DIR__ . '/../core/XlsxReader.php';
 
 class AdminController extends Controller
@@ -1096,12 +1097,128 @@ class AdminController extends Controller
     $annual = [
       'personnel' => round(array_sum(array_column($months, 'personnel')), 2),
       'purchases' => round(array_sum(array_column($months, 'purchases')), 2),
+      'other_expenses' => round(array_sum(array_column($months, 'other_expenses')), 2),
       'sales' => round(array_sum(array_column($months, 'sales')), 2),
     ];
-    $annual['expenses'] = round($annual['personnel'] + $annual['purchases'], 2);
+    $annual['expenses'] = round($annual['personnel'] + $annual['purchases'] + $annual['other_expenses'], 2);
     $annual['balance'] = round($annual['sales'] - $annual['expenses'], 2);
 
     $this->view('admin/income_expenses', compact('selectedYear', 'years', 'months', 'annual'));
+  }
+
+  public function otherExpenses(): void
+  {
+    Auth::requireRole('admin');
+    OtherExpense::ensureSchema();
+    $msg = null;
+    $selectedYear = max(2000, min(2100, (int)($_GET['year'] ?? date('Y'))));
+    $selectedMonth = max(1, min(12, (int)($_GET['month'] ?? date('n'))));
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      $action = (string)($_POST['action'] ?? '');
+      try {
+        if ($action === 'create_detail') {
+          OtherExpense::createDetail((string)($_POST['name'] ?? ''));
+          $msg = ['type' => 'success', 'text' => 'Detalle de gasto creado correctamente.'];
+        }
+        if ($action === 'toggle_detail') {
+          OtherExpense::setDetailActive(
+            (int)($_POST['id'] ?? 0),
+            (int)($_POST['is_active'] ?? 0)
+          );
+          $msg = ['type' => 'success', 'text' => 'Estado del detalle actualizado.'];
+        }
+        if ($action === 'update_detail') {
+          OtherExpense::updateDetail(
+            (int)($_POST['id'] ?? 0),
+            (string)($_POST['name'] ?? '')
+          );
+          $msg = ['type' => 'success', 'text' => 'Nombre del detalle actualizado correctamente.'];
+        }
+        if ($action === 'save_month') {
+          $period = DateTimeImmutable::createFromFormat('!Y-m', (string)($_POST['period'] ?? ''));
+          if (!$period || $period->format('Y-m') !== (string)($_POST['period'] ?? '')) {
+            throw new RuntimeException('El periodo seleccionado no es válido.');
+          }
+          $selectedYear = (int)$period->format('Y');
+          $selectedMonth = (int)$period->format('n');
+          OtherExpense::saveMonth($period->format('Y-m-01'), (array)($_POST['amounts'] ?? []));
+          $msg = ['type' => 'success', 'text' => 'Gastos del mes guardados correctamente.'];
+        }
+      } catch (Throwable $e) {
+        $message = str_contains($e->getMessage(), 'Duplicate entry')
+          ? 'Ya existe un detalle de gasto con ese nombre.'
+          : $e->getMessage();
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $message];
+      }
+    }
+
+    $periodMonth = sprintf('%04d-%02d-01', $selectedYear, $selectedMonth);
+    $details = OtherExpense::details();
+    $monthEntries = OtherExpense::entriesForMonth($periodMonth);
+    $monthTotal = round(array_sum(array_map(
+      static fn(array $entry): float => (float)$entry['amount'],
+      $monthEntries
+    )), 2);
+
+    $this->view('admin/other_expenses', compact(
+      'msg', 'selectedYear', 'selectedMonth', 'periodMonth',
+      'details', 'monthEntries', 'monthTotal'
+    ));
+  }
+
+  public function otherExpenseStatistics(): void
+  {
+    Auth::requireRole('admin');
+    $currentYear = (int)date('Y');
+    $selectedYear = filter_var(
+      $_GET['year'] ?? $currentYear,
+      FILTER_VALIDATE_INT,
+      ['options' => ['min_range' => 2000, 'max_range' => 2100]]
+    );
+    $selectedYear = $selectedYear !== false ? (int)$selectedYear : $currentYear;
+
+    $years = OtherExpense::availableYears();
+    foreach ([$currentYear, $selectedYear] as $year) {
+      if (!in_array($year, $years, true)) {
+        $years[] = $year;
+      }
+    }
+    rsort($years, SORT_NUMERIC);
+
+    $monthlyTotals = array_fill(1, 12, 0.0);
+    foreach (OtherExpense::monthlyTotalsForYear($selectedYear) as $row) {
+      $monthlyTotals[(int)$row['month_number']] = round((float)$row['total'], 2);
+    }
+
+    $details = [];
+    foreach (OtherExpense::detailMonthlyForYear($selectedYear) as $row) {
+      $id = (int)$row['expense_detail_id'];
+      if (!isset($details[$id])) {
+        $details[$id] = [
+          'id' => $id,
+          'name' => $row['name'],
+          'months' => array_fill(1, 12, 0.0),
+          'total' => 0.0,
+        ];
+      }
+      $amount = round((float)$row['amount'], 2);
+      $details[$id]['months'][(int)$row['month_number']] = $amount;
+      $details[$id]['total'] += $amount;
+    }
+    $details = array_values($details);
+    usort($details, static fn(array $left, array $right): int => $right['total'] <=> $left['total']);
+
+    $annualTotal = round(array_sum($monthlyTotals), 2);
+    $monthsWithData = count(array_filter($monthlyTotals, static fn(float $amount): bool => $amount > 0));
+    $highestMonthAmount = max($monthlyTotals);
+    $highestMonth = $highestMonthAmount > 0 ? array_search($highestMonthAmount, $monthlyTotals, true) : null;
+
+    $this->view('admin/other_expense_statistics', compact(
+      'selectedYear', 'years', 'monthlyTotals', 'details',
+      'annualTotal', 'monthsWithData', 'highestMonth', 'highestMonthAmount'
+    ));
   }
 
   public function activities(): void
