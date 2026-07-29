@@ -618,7 +618,7 @@ class AdminController extends Controller
       try {
         if ($action === 'toggle_item') {
           $isPurchased = isset($_POST['is_purchased']) ? 1 : 0;
-          Requirement::setPurchased(
+          $purchasedAt = Requirement::setPurchased(
             (int)($_POST['item_id'] ?? 0),
             $isPurchased
           );
@@ -632,6 +632,11 @@ class AdminController extends Controller
                 'is_purchased' => $isPurchased,
                 'status_text' => $isPurchased === 1 ? 'Comprado' : 'Pendiente',
                 'status_class' => $isPurchased === 1 ? 'success' : 'secondary',
+                'purchased_at' => $purchasedAt,
+                'purchased_at_text' => $purchasedAt !== null
+                  ? 'Fecha completado: ' . date('d/m/Y', strtotime($purchasedAt))
+                    . ' - Hora completado: ' . date('H:i', strtotime($purchasedAt))
+                  : null,
               ],
             ]);
           }
@@ -784,6 +789,75 @@ class AdminController extends Controller
       'weeklyEstimatedTotal',
       'weeklyPurchasedTotal',
       'weeklyUnpricedItems'
+    ));
+  }
+
+  public function purchaseExpenses(): void
+  {
+    Auth::requireRole('admin');
+
+    $currentYear = (int)date('Y');
+    $selectedYear = filter_var(
+      $_GET['year'] ?? $currentYear,
+      FILTER_VALIDATE_INT,
+      ['options' => ['min_range' => 2000, 'max_range' => 2100]]
+    );
+    $selectedYear = $selectedYear !== false ? (int)$selectedYear : $currentYear;
+
+    $years = Requirement::purchaseExpenseYears();
+    if (!in_array($currentYear, $years, true)) {
+      $years[] = $currentYear;
+    }
+    if (!in_array($selectedYear, $years, true)) {
+      $years[] = $selectedYear;
+    }
+    rsort($years, SORT_NUMERIC);
+
+    $rows = Requirement::purchaseExpensesByYear($selectedYear);
+    $months = array_fill(1, 12, [
+      'products' => [],
+      'request_count' => 0,
+      'total' => 0.0,
+      'unpriced_count' => 0,
+    ]);
+
+    foreach ($rows as $row) {
+      $month = (int)$row['month_number'];
+      if ($month < 1 || $month > 12) {
+        continue;
+      }
+
+      $row['request_count'] = (int)$row['request_count'];
+      $row['total_quantity'] = (float)$row['total_quantity'];
+      $row['subtotal'] = round((float)$row['subtotal'], 2);
+      $row['unpriced_count'] = (int)$row['unpriced_count'];
+      $months[$month]['products'][] = $row;
+      $months[$month]['request_count'] += $row['request_count'];
+      $months[$month]['total'] += $row['subtotal'];
+      $months[$month]['unpriced_count'] += $row['unpriced_count'];
+    }
+
+    foreach ($months as &$month) {
+      $month['top_products'] = array_slice($month['products'], 0, 10);
+      unset($month['products']);
+      $month['total'] = round($month['total'], 2);
+    }
+    unset($month);
+
+    $annualTotal = round(array_sum(array_column($months, 'total')), 2);
+    $annualRequests = array_sum(array_column($months, 'request_count'));
+    $monthsWithExpenses = count(array_filter(
+      $months,
+      static fn(array $month): bool => $month['request_count'] > 0
+    ));
+
+    $this->view('admin/purchase_expenses', compact(
+      'selectedYear',
+      'years',
+      'months',
+      'annualTotal',
+      'annualRequests',
+      'monthsWithExpenses'
     ));
   }
 

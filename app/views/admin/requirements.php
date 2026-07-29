@@ -311,6 +311,9 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                             <?php if (!empty($item['item_created_at'])): ?>
                               <div class="small text-muted">Hora de registro: <?= Helpers::e(date('H:i', strtotime($item['item_created_at']))) ?></div>
                             <?php endif; ?>
+                            <div class="js-purchased-at small text-success<?= empty($item['purchased_at']) ? ' d-none' : '' ?>">
+                              <span><?php if (!empty($item['purchased_at'])): ?>Fecha completado: <?= Helpers::e(date('d/m/Y', strtotime($item['purchased_at']))) ?> - Hora completado: <?= Helpers::e(date('H:i', strtotime($item['purchased_at']))) ?><?php endif; ?></span>
+                            </div>
                             <?php if ($item['quantity'] !== null || !empty($item['unit_measure_name'])): ?>
                               <span class="text-muted small">
                                 -
@@ -569,6 +572,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
     forms.forEach(function(form) {
       const checkbox = form.querySelector('[data-role="purchase-toggle"]');
       const statusBadge = form.querySelector('.js-purchase-status');
+      const purchasedAt = form.querySelector('.js-purchased-at');
       if (!checkbox || !statusBadge) {
         return;
       }
@@ -613,6 +617,11 @@ $unitMeasuresForJs = array_map(static function ($unit) {
           statusBadge.textContent = result.item?.status_text || (purchased ? 'Comprado' : 'Pendiente');
           statusBadge.classList.remove('text-bg-success', 'text-bg-secondary');
           statusBadge.classList.add(purchased ? 'text-bg-success' : 'text-bg-secondary');
+          if (purchasedAt) {
+            const purchasedAtText = result.item?.purchased_at_text || '';
+            purchasedAt.querySelector('span').textContent = purchasedAtText;
+            purchasedAt.classList.toggle('d-none', !purchased || !purchasedAtText);
+          }
           updateWorkerSummary(form);
           updateFinancialSummary();
         } catch (error) {
