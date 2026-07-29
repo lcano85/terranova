@@ -243,6 +243,8 @@ class Security
 
     $add('admin.finances', 'Finanzas', null, 58, 'admin');
     $add('admin.income_expenses', 'Egresos - ingresos', '/admin/finance/income-expenses', 59, 'admin', 'admin.finances');
+    $add('admin.other_expenses', 'Otros gastos', '/admin/finance/other-expenses', 60, 'admin', 'admin.finances');
+    $add('admin.other_expense_statistics', 'Estadísticas otros gastos', '/admin/finance/other-expenses/statistics', 61, 'admin', 'admin.finances');
 
     $add('admin.leads', 'Leads Cena', null, 60, 'admin');
     $add('admin.lead_entries', 'Registros', '/admin/leads-cena', 61, 'admin', 'admin.leads');

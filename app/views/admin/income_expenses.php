@@ -41,23 +41,26 @@ foreach ($months as $monthNumber => $month) {
     </div></div>
 
     <div class="row g-3 mb-3">
-      <div class="col-md-3"><div class="card shadow-sm h-100 border-danger"><div class="card-body">
+      <div class="col-md-4 col-xl"><div class="card shadow-sm h-100 border-danger"><div class="card-body">
         <div class="text-muted small">Egresos del año</div><div class="fs-4 fw-bold text-danger"><?= $money($annual['expenses']) ?></div>
       </div></div></div>
-      <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body">
+      <div class="col-md-4 col-xl"><div class="card shadow-sm h-100"><div class="card-body">
         <div class="text-muted small">Personal</div><div class="fs-4 fw-bold"><?= $money($annual['personnel']) ?></div>
       </div></div></div>
-      <div class="col-md-3"><div class="card shadow-sm h-100"><div class="card-body">
+      <div class="col-md-4 col-xl"><div class="card shadow-sm h-100"><div class="card-body">
         <div class="text-muted small">Compras</div><div class="fs-4 fw-bold"><?= $money($annual['purchases']) ?></div>
       </div></div></div>
-      <div class="col-md-3"><div class="card shadow-sm h-100 border-success"><div class="card-body">
+      <div class="col-md-4 col-xl"><div class="card shadow-sm h-100"><div class="card-body">
+        <div class="text-muted small">Otros gastos</div><div class="fs-4 fw-bold"><?= $money($annual['other_expenses']) ?></div>
+      </div></div></div>
+      <div class="col-md-4 col-xl"><div class="card shadow-sm h-100 border-success"><div class="card-body">
         <div class="text-muted small">Ingresos por ventas</div><div class="fs-4 fw-bold text-success"><?= $money($annual['sales']) ?></div>
       </div></div></div>
     </div>
 
     <div class="card shadow-sm mb-4 <?= $annual['balance'] >= 0 ? 'border-success' : 'border-danger' ?>">
       <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div><div class="text-muted">Resultado neto <?= (int)$selectedYear ?></div><div class="small">Ventas − Personal − Compras</div></div>
+        <div><div class="text-muted">Resultado neto <?= (int)$selectedYear ?></div><div class="small">Ventas − Personal − Compras − Otros gastos</div></div>
         <div class="fs-3 fw-bold <?= $annual['balance'] >= 0 ? 'text-success' : 'text-danger' ?>">
           <?= $annual['balance'] >= 0 ? '+' : '-' ?><?= $money(abs($annual['balance'])) ?>
         </div>
@@ -115,6 +118,13 @@ foreach ($months as $monthNumber => $month) {
                           </div>
                         </div>
                         <strong><?= $money($month['purchases']) ?></strong>
+                      </div>
+                      <div class="d-flex justify-content-between border-top py-2">
+                        <div>
+                          <div class="fw-semibold">Otros gastos</div>
+                          <div class="text-muted small"><?= (int)$month['other_expense_records'] ?> gasto(s) registrado(s)</div>
+                        </div>
+                        <strong><?= $money($month['other_expenses']) ?></strong>
                       </div>
                     </div>
                   </div>

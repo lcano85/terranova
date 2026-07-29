@@ -3,6 +3,7 @@ require_once __DIR__ . '/../core/Database.php';
 require_once __DIR__ . '/Payroll.php';
 require_once __DIR__ . '/Requirement.php';
 require_once __DIR__ . '/MonthlyProductSale.php';
+require_once __DIR__ . '/OtherExpense.php';
 
 class FinanceSummary
 {
@@ -19,6 +20,8 @@ class FinanceSummary
           WHERE is_purchased=1 AND purchased_at IS NOT NULL
         UNION
         SELECT YEAR(period_month) AS finance_year FROM monthly_product_sales
+        UNION
+        SELECT YEAR(period_month) AS finance_year FROM monthly_other_expenses
       ) years
       WHERE finance_year IS NOT NULL
       GROUP BY finance_year
@@ -37,6 +40,8 @@ class FinanceSummary
       'purchases' => 0.0,
       'purchase_records' => 0,
       'unpriced_purchases' => 0,
+      'other_expenses' => 0.0,
+      'other_expense_records' => 0,
       'sales' => 0.0,
       'units_sold' => 0.0,
       'sales_products' => 0,
@@ -103,11 +108,18 @@ class FinanceSummary
       $months[$month]['sales_products'] = (int)$row['products_count'];
     }
 
+    foreach (OtherExpense::monthlyTotalsForYear($year) as $row) {
+      $month = (int)$row['month_number'];
+      $months[$month]['other_expenses'] = round((float)$row['total'], 2);
+      $months[$month]['other_expense_records'] = (int)$row['records_count'];
+    }
+
     foreach ($months as &$month) {
-      $month['expenses'] = round($month['personnel'] + $month['purchases'], 2);
+      $month['expenses'] = round($month['personnel'] + $month['purchases'] + $month['other_expenses'], 2);
       $month['balance'] = round($month['sales'] - $month['expenses'], 2);
       $month['has_data'] = $month['personnel_records'] > 0
         || $month['purchase_records'] > 0
+        || $month['other_expense_records'] > 0
         || $month['sales_products'] > 0;
     }
     unset($month);
@@ -120,5 +132,6 @@ class FinanceSummary
     Payroll::ensureSchema();
     Requirement::ensureSchema();
     MonthlyProductSale::ensureSchema();
+    OtherExpense::ensureSchema();
   }
 }
