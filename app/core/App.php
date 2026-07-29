@@ -27,6 +27,7 @@ class App {
       '/admin/purchase-areas' => ['AdminController', 'purchaseAreas'],
       '/admin/requirements' => ['AdminController', 'requirements'],
       '/admin/purchase-expenses' => ['AdminController', 'purchaseExpenses'],
+      '/admin/purchase-frequency' => ['AdminController', 'purchaseFrequency'],
       '/admin/supplies' => ['AdminController', 'supplies'],
       '/admin/unit-measures' => ['AdminController', 'unitMeasures'],
       '/admin/activities' => ['AdminController', 'activities'],

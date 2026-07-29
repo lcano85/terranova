@@ -312,6 +312,59 @@ class Requirement
     return $st->fetchAll();
   }
 
+  public static function purchasedItemsBetween(
+    string $dateFrom,
+    string $dateTo,
+    int $purchaseAreaId = 0,
+    string $productSearch = ''
+  ): array {
+    self::ensureSchema();
+    $sql = "
+      SELECT
+        ri.id AS item_id,
+        ri.supply_id,
+        CONCAT('s:', ri.supply_id) AS product_key,
+        s.name AS product_name,
+        ri.item_name AS registered_name,
+        ri.quantity,
+        COALESCE(ri.unit_price, s.price) AS unit_price,
+        CASE
+          WHEN ri.quantity IS NOT NULL AND COALESCE(ri.unit_price, s.price) IS NOT NULL
+          THEN ri.quantity * COALESCE(ri.unit_price, s.price)
+          ELSE NULL
+        END AS subtotal,
+        ri.purchased_at,
+        r.purchase_area_id,
+        pa.name AS purchase_area_name,
+        CONCAT(TRIM(u.first_name), ' ', TRIM(u.last_name)) AS requested_by
+      FROM requirement_items ri
+      JOIN requirements r ON r.id = ri.requirement_id
+      JOIN purchase_areas pa ON pa.id = r.purchase_area_id
+      JOIN users u ON u.id = r.user_id
+      JOIN supplies s ON s.id = ri.supply_id
+      WHERE ri.is_purchased=1
+        AND ri.supply_id IS NOT NULL
+        AND ri.purchased_at >= ?
+        AND ri.purchased_at < DATE_ADD(?, INTERVAL 1 DAY)
+    ";
+    $params = [$dateFrom . ' 00:00:00', $dateTo . ' 00:00:00'];
+
+    if ($purchaseAreaId > 0) {
+      $sql .= " AND r.purchase_area_id=? ";
+      $params[] = $purchaseAreaId;
+    }
+    if ($productSearch !== '') {
+      $sql .= " AND s.name LIKE ? ";
+      $search = '%' . $productSearch . '%';
+      $params[] = $search;
+    }
+
+    $sql .= " ORDER BY ri.purchased_at ASC, product_name ASC, ri.id ASC ";
+    $st = Database::conn()->prepare($sql);
+    $st->execute($params);
+    return $st->fetchAll();
+  }
+
   public static function sanitizeItems(array $items): array
   {
     $uniqueItems = [];

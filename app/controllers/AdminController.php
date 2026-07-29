@@ -861,6 +861,203 @@ class AdminController extends Controller
     ));
   }
 
+  public function purchaseFrequency(): void
+  {
+    Auth::requireRole('admin');
+
+    $today = new DateTimeImmutable('today');
+    $defaultFrom = $today->modify('-6 months')->format('Y-m-d');
+    $dateFrom = $this->validDate((string)($_GET['date_from'] ?? '')) ?? $defaultFrom;
+    $dateTo = $this->validDate((string)($_GET['date_to'] ?? '')) ?? $today->format('Y-m-d');
+    if ($dateFrom > $dateTo) {
+      [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+    }
+
+    $purchaseAreaId = max(0, (int)($_GET['purchase_area_id'] ?? 0));
+    $productSearch = trim((string)($_GET['product'] ?? ''));
+    $frequencyFilter = trim((string)($_GET['frequency'] ?? ''));
+    $statusFilter = trim((string)($_GET['status'] ?? ''));
+    $allowedFrequencies = ['weekly', 'biweekly', 'monthly', 'sporadic', 'irregular', 'insufficient'];
+    $allowedStatuses = ['overdue', 'today', 'soon', 'normal', 'irregular', 'insufficient'];
+    if (!in_array($frequencyFilter, $allowedFrequencies, true)) {
+      $frequencyFilter = '';
+    }
+    if (!in_array($statusFilter, $allowedStatuses, true)) {
+      $statusFilter = '';
+    }
+
+    $rows = Requirement::purchasedItemsBetween($dateFrom, $dateTo, $purchaseAreaId, $productSearch);
+    $products = [];
+    $calendarEvents = [];
+    $totalSpend = 0.0;
+
+    foreach ($rows as $row) {
+      $key = (string)$row['product_key'];
+      $date = date('Y-m-d', strtotime($row['purchased_at']));
+      $subtotal = $row['subtotal'] !== null ? (float)$row['subtotal'] : null;
+      if (!isset($products[$key])) {
+        $products[$key] = [
+          'product_key' => $key,
+          'product_name' => $row['product_name'],
+          'purchase_dates' => [],
+          'purchases' => [],
+          'purchase_count' => 0,
+          'total_quantity' => 0.0,
+          'total_spend' => 0.0,
+          'unpriced_count' => 0,
+        ];
+      }
+
+      $products[$key]['purchase_dates'][$date] = true;
+      $products[$key]['purchase_count']++;
+      $products[$key]['total_quantity'] += (float)($row['quantity'] ?? 0);
+      if ($subtotal !== null) {
+        $products[$key]['total_spend'] += $subtotal;
+        $totalSpend += $subtotal;
+      } else {
+        $products[$key]['unpriced_count']++;
+      }
+      $products[$key]['purchases'][] = $row;
+      $calendarEvents[$date][] = $row;
+    }
+
+    foreach ($products as &$product) {
+      $dates = array_keys($product['purchase_dates']);
+      sort($dates);
+      $intervals = [];
+      for ($index = 1, $count = count($dates); $index < $count; $index++) {
+        $previous = new DateTimeImmutable($dates[$index - 1]);
+        $current = new DateTimeImmutable($dates[$index]);
+        $intervals[] = (int)$previous->diff($current)->days;
+      }
+
+      $product['dates'] = $dates;
+      $product['intervals'] = $intervals;
+      $product['last_purchase'] = !empty($dates) ? end($dates) : null;
+      $product['median_days'] = count($dates) >= 3 ? $this->median($intervals) : null;
+      $product['is_irregular'] = false;
+      $product['next_purchase'] = null;
+      $product['days_until_next'] = null;
+
+      if ($product['median_days'] !== null) {
+        $spread = max($intervals) - min($intervals);
+        $product['is_irregular'] = $spread > max(3, $product['median_days'] * 0.5);
+        $product['next_purchase'] = (new DateTimeImmutable($product['last_purchase']))
+          ->modify('+' . max(1, (int)round($product['median_days'])) . ' days')
+          ->format('Y-m-d');
+        $product['days_until_next'] = (int)$today->diff(
+          new DateTimeImmutable($product['next_purchase'])
+        )->format('%r%a');
+      }
+
+      if (count($dates) < 3) {
+        $product['frequency_key'] = 'insufficient';
+        $product['frequency_text'] = 'Datos insuficientes';
+        $product['status_key'] = 'insufficient';
+        $product['status_text'] = 'Datos insuficientes';
+        $product['status_class'] = 'secondary';
+      } elseif ($product['is_irregular']) {
+        $product['frequency_key'] = 'irregular';
+        $product['frequency_text'] = 'Irregular';
+        $product['status_key'] = 'irregular';
+        $product['status_text'] = 'Compra irregular';
+        $product['status_class'] = 'warning';
+      } else {
+        $days = (float)$product['median_days'];
+        if ($days <= 10) {
+          $product['frequency_key'] = 'weekly';
+          $product['frequency_text'] = 'Cada ' . $this->frequencyDaysText($days);
+        } elseif ($days <= 20) {
+          $product['frequency_key'] = 'biweekly';
+          $product['frequency_text'] = 'Cada ' . $this->frequencyDaysText($days);
+        } elseif ($days <= 45) {
+          $product['frequency_key'] = 'monthly';
+          $product['frequency_text'] = 'Cada ' . $this->frequencyDaysText($days);
+        } else {
+          $product['frequency_key'] = 'sporadic';
+          $product['frequency_text'] = 'Cada ' . $this->frequencyDaysText($days);
+        }
+
+        $daysUntil = (int)$product['days_until_next'];
+        if ($daysUntil < 0) {
+          $product['status_key'] = 'overdue';
+          $product['status_text'] = 'Vencido por ' . abs($daysUntil) . ' día(s)';
+          $product['status_class'] = 'danger';
+        } elseif ($daysUntil === 0) {
+          $product['status_key'] = 'today';
+          $product['status_text'] = 'Comprar hoy';
+          $product['status_class'] = 'danger';
+        } elseif ($daysUntil <= 7) {
+          $product['status_key'] = 'soon';
+          $product['status_text'] = 'Próximo en ' . $daysUntil . ' día(s)';
+          $product['status_class'] = 'warning';
+        } else {
+          $product['status_key'] = 'normal';
+          $product['status_text'] = 'Dentro del ciclo';
+          $product['status_class'] = 'success';
+        }
+      }
+      unset($product['purchase_dates']);
+      $product['total_spend'] = round($product['total_spend'], 2);
+    }
+    unset($product);
+
+    $products = array_values(array_filter($products, static function (array $product) use ($frequencyFilter, $statusFilter): bool {
+      return ($frequencyFilter === '' || $product['frequency_key'] === $frequencyFilter)
+        && ($statusFilter === '' || $product['status_key'] === $statusFilter);
+    }));
+    usort($products, static function (array $left, array $right): int {
+      $leftDays = $left['days_until_next'] ?? PHP_INT_MAX;
+      $rightDays = $right['days_until_next'] ?? PHP_INT_MAX;
+      return $leftDays <=> $rightDays ?: strcasecmp($left['product_name'], $right['product_name']);
+    });
+
+    $requestedCalendarMonth = (string)($_GET['calendar_month'] ?? '');
+    $parsedCalendarMonth = DateTimeImmutable::createFromFormat('!Y-m', $requestedCalendarMonth);
+    $calendarMonth = $parsedCalendarMonth && $parsedCalendarMonth->format('Y-m') === $requestedCalendarMonth
+      ? $requestedCalendarMonth
+      : date('Y-m', strtotime($dateTo));
+    $calendarStart = new DateTimeImmutable($calendarMonth . '-01');
+    $calendarPrevious = $calendarStart->modify('-1 month')->format('Y-m');
+    $calendarNext = $calendarStart->modify('+1 month')->format('Y-m');
+    $areas = PurchaseArea::active();
+    $summary = [
+      'products' => count($products),
+      'purchases' => count($rows),
+      'spend' => round($totalSpend, 2),
+      'due' => count(array_filter($products, static fn(array $product): bool =>
+        in_array($product['status_key'], ['overdue', 'today', 'soon'], true)
+      )),
+    ];
+
+    $this->view('admin/purchase_frequency', compact(
+      'dateFrom', 'dateTo', 'purchaseAreaId', 'productSearch', 'frequencyFilter',
+      'statusFilter', 'products', 'calendarEvents', 'calendarStart',
+      'calendarPrevious', 'calendarNext', 'areas', 'summary'
+    ));
+  }
+
+  private function validDate(string $date): ?string
+  {
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    return $parsed && $parsed->format('Y-m-d') === $date ? $date : null;
+  }
+
+  private function median(array $values): float
+  {
+    sort($values, SORT_NUMERIC);
+    $count = count($values);
+    $middle = intdiv($count, 2);
+    return $count % 2 === 1
+      ? (float)$values[$middle]
+      : ((float)$values[$middle - 1] + (float)$values[$middle]) / 2;
+  }
+
+  private function frequencyDaysText(float $days): string
+  {
+    return rtrim(rtrim(number_format($days, 1, '.', ''), '0'), '.') . ' día(s)';
+  }
+
   private function requirementMailLogs(): array
   {
     MailNotificationLog::ensureSchema();
