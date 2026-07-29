@@ -99,7 +99,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   const margin=Math.min(95,n(form.querySelector('[data-target-margin]').value)), suggested=unit/Math.max(.05,1-margin/100), price=n(form.querySelector('[data-selling-price]').value);
   form.querySelector('[data-ingredient-total]').textContent=money(ingredients);form.querySelector('[data-labor-total]').textContent=money(labor);form.querySelector('[data-costing-total]').textContent=money(total);form.querySelector('[data-costing-unit]').textContent=money(unit);form.querySelector('[data-suggested-price]').textContent=money(suggested);
   const current=form.querySelector('[data-current-margin]');current.textContent=price>0?(((price-unit)/price)*100).toFixed(1)+'%':'—';current.className=price>=unit?'profit-positive':'profit-negative';
-  form.querySelector('button[type=submit]').disabled=!valid;
+  const submit=form.querySelector('button[type="submit"]');
+  if(submit)submit.disabled=!valid;
  }
  const rowHtml=form=>form.querySelector('[data-costing-row]').outerHTML;
  document.querySelectorAll('[data-costing-form]').forEach(form=>{
@@ -112,6 +113,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   });
   form.querySelector('[data-add-costing-item]').addEventListener('click',()=>{body.insertAdjacentHTML('beforeend',form.dataset.blankRow);const r=body.lastElementChild;r.querySelectorAll('input').forEach(x=>x.value='');r.querySelectorAll('select').forEach(x=>x.selectedIndex=0);r.querySelector('[data-purchase-qty]').value=1;recalc();});
   body.addEventListener('click',e=>{const b=e.target.closest('[data-remove-costing-item]');if(b&&body.children.length>1){b.closest('tr').remove();recalc();}});
+  const modal=form.closest('.modal');
+  modal?.addEventListener('shown.bs.modal',()=>{
+    const modalBody=modal.querySelector('.modal-body');
+    if(modalBody)modalBody.scrollTop=0;
+    recalc();
+  });
   recalc();
  });
 });

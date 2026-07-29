@@ -118,7 +118,7 @@
             </div>
           </div>
         </div>
-        <div class="modal-footer"><button class="btn btn-primary"><?= $formAction === 'create'?'Guardar escandallo':'Guardar cambios' ?></button></div>
+        <div class="modal-footer"><button type="submit" class="btn btn-primary"><?= $formAction === 'create'?'Guardar escandallo':'Guardar cambios' ?></button></div>
       </form>
     </div>
   </div>
