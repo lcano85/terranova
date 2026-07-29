@@ -222,8 +222,9 @@ class Security
     $add('admin.purchases', 'Compras', null, 30, 'admin');
     $add('admin.purchase_areas', 'Áreas de compras', '/admin/purchase-areas', 31, 'admin', 'admin.purchases');
     $add('admin.requirements', 'Requerimientos', '/admin/requirements', 32, 'admin', 'admin.purchases');
-    $add('admin.supplies', 'Insumos', '/admin/supplies', 33, 'admin', 'admin.purchases');
-    $add('admin.unit_measures', 'Unidades de medida', '/admin/unit-measures', 34, 'admin', 'admin.purchases');
+    $add('admin.purchase_expenses', 'Gastos en compras', '/admin/purchase-expenses', 33, 'admin', 'admin.purchases');
+    $add('admin.supplies', 'Insumos', '/admin/supplies', 34, 'admin', 'admin.purchases');
+    $add('admin.unit_measures', 'Unidades de medida', '/admin/unit-measures', 35, 'admin', 'admin.purchases');
 
     $add('admin.operations', 'Operaciones', null, 40, 'admin');
     $add('admin.activities', 'Actividades', '/admin/activities', 41, 'admin', 'admin.operations');

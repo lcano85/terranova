@@ -145,6 +145,12 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                     <?php endif; ?>
                     <?php if ((int)$item['is_purchased'] === 1): ?>
                       <span class="badge text-bg-success">Comprado</span>
+                      <?php if (!empty($item['purchased_at'])): ?>
+                        <div class="small text-success">
+                          Fecha completado: <?= Helpers::e(date('d/m/Y', strtotime($item['purchased_at']))) ?>
+                          - Hora completado: <?= Helpers::e(date('H:i', strtotime($item['purchased_at']))) ?>
+                        </div>
+                      <?php endif; ?>
                     <?php endif; ?>
                   </div>
                   <?php if (($group['status'] ?? '') === 'draft'): ?>

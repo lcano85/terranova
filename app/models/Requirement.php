@@ -75,6 +75,15 @@ class Requirement
       $pdo->exec("ALTER TABLE requirement_items ADD COLUMN detail VARCHAR(255) NULL AFTER item_name");
     }
 
+    if (empty($existingItemColumns['purchased_at'])) {
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN purchased_at DATETIME NULL AFTER is_purchased");
+    }
+
+    $purchasedAtIndex = $pdo->query("SHOW INDEX FROM requirement_items WHERE Key_name = 'idx_requirement_items_purchased_at'")->fetch();
+    if (!$purchasedAtIndex) {
+      $pdo->exec("ALTER TABLE requirement_items ADD KEY idx_requirement_items_purchased_at (purchased_at)");
+    }
+
     self::$schemaEnsured = true;
   }
 
@@ -186,7 +195,8 @@ class Requirement
         um.name AS unit_measure_name,
         um.abbreviation AS unit_measure_abbreviation,
         ri.created_at AS item_created_at,
-        ri.is_purchased
+        ri.is_purchased,
+        ri.purchased_at
       FROM requirements r
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
@@ -224,7 +234,8 @@ class Requirement
         um.abbreviation AS unit_measure_abbreviation,
         COALESCE(ri.unit_price, s.price) AS unit_price,
         ri.created_at AS item_created_at,
-        ri.is_purchased
+        ri.is_purchased,
+        ri.purchased_at
       FROM requirements r
       JOIN users u ON u.id = r.user_id
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
@@ -239,7 +250,7 @@ class Requirement
     return $st->fetchAll();
   }
 
-  public static function setPurchased(int $itemId, int $isPurchased): void
+  public static function setPurchased(int $itemId, int $isPurchased): ?string
   {
     self::ensureSchema();
     $purchasedAt = $isPurchased === 1 ? date('Y-m-d H:i:s') : null;
@@ -249,6 +260,56 @@ class Requirement
       WHERE id=?
     ");
     $st->execute([$isPurchased, $purchasedAt, $itemId]);
+    return $purchasedAt;
+  }
+
+  public static function purchaseExpenseYears(): array
+  {
+    self::ensureSchema();
+    $rows = Database::conn()->query("
+      SELECT YEAR(purchased_at) AS expense_year
+      FROM requirement_items
+      WHERE is_purchased=1 AND purchased_at IS NOT NULL
+      GROUP BY YEAR(purchased_at)
+      ORDER BY expense_year DESC
+    ")->fetchAll();
+
+    return array_map(static fn(array $row): int => (int)$row['expense_year'], $rows);
+  }
+
+  public static function purchaseExpensesByYear(int $year): array
+  {
+    self::ensureSchema();
+    $from = sprintf('%04d-01-01 00:00:00', $year);
+    $to = sprintf('%04d-01-01 00:00:00', $year + 1);
+    $st = Database::conn()->prepare("
+      SELECT
+        MONTH(ri.purchased_at) AS month_number,
+        COALESCE(CONCAT('s:', ri.supply_id), CONCAT('n:', LOWER(TRIM(ri.item_name)))) AS product_key,
+        COALESCE(NULLIF(s.name, ''), ri.item_name) AS product_name,
+        COUNT(*) AS request_count,
+        SUM(COALESCE(ri.quantity, 0)) AS total_quantity,
+        SUM(
+          CASE
+            WHEN ri.quantity IS NOT NULL AND COALESCE(ri.unit_price, s.price) IS NOT NULL
+            THEN ri.quantity * COALESCE(ri.unit_price, s.price)
+            ELSE 0
+          END
+        ) AS subtotal,
+        SUM(CASE WHEN ri.quantity IS NULL OR COALESCE(ri.unit_price, s.price) IS NULL THEN 1 ELSE 0 END) AS unpriced_count
+      FROM requirement_items ri
+      LEFT JOIN supplies s ON s.id = ri.supply_id
+      WHERE ri.is_purchased=1
+        AND ri.purchased_at >= ?
+        AND ri.purchased_at < ?
+      GROUP BY
+        MONTH(ri.purchased_at),
+        COALESCE(CONCAT('s:', ri.supply_id), CONCAT('n:', LOWER(TRIM(ri.item_name)))),
+        COALESCE(NULLIF(s.name, ''), ri.item_name)
+      ORDER BY month_number ASC, request_count DESC, subtotal DESC, product_name ASC
+    ");
+    $st->execute([$from, $to]);
+    return $st->fetchAll();
   }
 
   public static function sanitizeItems(array $items): array
