@@ -43,6 +43,7 @@ class App {
       '/admin/recipes' => ['AdminController', 'recipes'],
       '/admin/sales' => ['AdminController', 'sales'],
       '/admin/sales/statistics' => ['AdminController', 'salesStatistics'],
+      '/admin/finance/income-expenses' => ['AdminController', 'incomeExpenses'],
       '/admin/leads-cena' => ['AdminController', 'leadDinnerEntries'],
       '/admin/leads-cena-campaigns' => ['AdminController', 'leadDinnerCampaigns'],
       '/admin/leads-cena-statuses' => ['AdminController', 'leadDinnerStatuses'],

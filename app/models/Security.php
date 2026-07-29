@@ -241,6 +241,9 @@ class Security
     $add('admin.sales_statistics', 'Estadísticas de ventas', '/admin/sales/statistics', 55, 'admin', 'admin.commercial');
     $add('admin.promotions', 'Promociones', '/admin/promotions', 56, 'admin', 'admin.commercial');
 
+    $add('admin.finances', 'Finanzas', null, 58, 'admin');
+    $add('admin.income_expenses', 'Egresos - ingresos', '/admin/finance/income-expenses', 59, 'admin', 'admin.finances');
+
     $add('admin.leads', 'Leads Cena', null, 60, 'admin');
     $add('admin.lead_entries', 'Registros', '/admin/leads-cena', 61, 'admin', 'admin.leads');
     $add('admin.lead_campaigns', 'Campañas', '/admin/leads-cena-campaigns', 62, 'admin', 'admin.leads');
