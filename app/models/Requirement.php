@@ -470,6 +470,49 @@ class Requirement
     return trim($name . ' - ' . trim($quantityText . ' ' . $unit));
   }
 
+  public static function purchasedItemsForWorkers(
+    string $dateFrom,
+    string $dateTo,
+    int $purchaseAreaId = 0,
+    string $productSearch = ''
+  ): array {
+    self::ensureSchema();
+    $sql = "
+      SELECT
+        ri.id AS item_id,
+        ri.supply_id,
+        COALESCE(CONCAT('s:', ri.supply_id), CONCAT('n:', LOWER(TRIM(ri.item_name)))) AS product_key,
+        COALESCE(NULLIF(s.name, ''), ri.item_name) AS product_name,
+        ri.quantity,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation,
+        ri.purchased_at,
+        r.purchase_area_id,
+        pa.name AS purchase_area_name
+      FROM requirement_items ri
+      JOIN requirements r ON r.id = ri.requirement_id
+      JOIN purchase_areas pa ON pa.id = r.purchase_area_id
+      LEFT JOIN supplies s ON s.id = ri.supply_id
+      LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
+      WHERE ri.is_purchased=1
+        AND ri.purchased_at >= ?
+        AND ri.purchased_at < DATE_ADD(?, INTERVAL 1 DAY)
+    ";
+    $params = [$dateFrom . ' 00:00:00', $dateTo . ' 00:00:00'];
+    if ($purchaseAreaId > 0) {
+      $sql .= " AND r.purchase_area_id=? ";
+      $params[] = $purchaseAreaId;
+    }
+    if ($productSearch !== '') {
+      $sql .= " AND COALESCE(NULLIF(s.name, ''), ri.item_name) LIKE ? ";
+      $params[] = '%' . $productSearch . '%';
+    }
+    $sql .= " ORDER BY ri.purchased_at DESC, product_name ASC, ri.id DESC ";
+    $st = Database::conn()->prepare($sql);
+    $st->execute($params);
+    return $st->fetchAll();
+  }
+
   public static function calculateSubtotal(array $item): ?float
   {
     if (($item['unit_price'] ?? null) === null || ($item['quantity'] ?? null) === null) {
