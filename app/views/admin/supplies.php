@@ -62,7 +62,7 @@ require_once __DIR__ . '/../../core/Pagination.php';
               <th style="width:80px;">ID</th>
               <th>Nombre del insumo</th>
               <th>Areas de compras</th>
-              <th>Precio</th>
+              <th>Precio de referencia</th>
               <th>Estado</th>
               <th style="width:250px;">Acciones</th>
             </tr>
@@ -74,7 +74,17 @@ require_once __DIR__ . '/../../core/Pagination.php';
                 <td><?= (int)$supply['id'] ?></td>
                 <td><?= Helpers::e($supply['name']) ?></td>
                 <td><?= Helpers::e($supply['purchase_area_names'] ?: 'Sin areas asignadas') ?></td>
-                <td><?= $supply['price'] !== null ? 'S/ ' . number_format((float)$supply['price'], 2) : '-' ?></td>
+                <td>
+                  <?php if ($supply['price'] !== null): ?>
+                    S/ <?= number_format((float)$supply['price'], 2) ?>
+                    <?php if ($supply['reference_quantity'] !== null && $supply['unit_measure_id'] !== null): ?>
+                      por <?= Helpers::e(rtrim(rtrim(number_format((float)$supply['reference_quantity'], 3, '.', ''), '0'), '.')) ?>
+                      <?= Helpers::e($supply['unit_measure_abbreviation'] ?: ($supply['unit_measure_name'] ?? '')) ?>
+                    <?php else: ?>
+                      <span class="badge text-bg-warning ms-1">Falta unidad y referencia</span>
+                    <?php endif; ?>
+                  <?php else: ?>-<?php endif; ?>
+                </td>
                 <td>
                   <?php if ((int)$supply['is_active'] === 1): ?>
                     <span class="badge text-bg-success">Activo</span>
@@ -143,11 +153,30 @@ require_once __DIR__ . '/../../core/Pagination.php';
                           <div class="form-text">Selecciona una o mas areas.</div>
                         </div>
                         <div class="mb-3">
-                          <label class="form-label">Precio</label>
+                          <label class="form-label">Precio de referencia</label>
                           <input class="form-control" type="number" name="price" min="0" step="0.01"
                                  value="<?= Helpers::e($supply['price'] !== null ? (string)$supply['price'] : '') ?>"
                                  placeholder="Ej: 15.90">
-                          <div class="form-text">Opcional.</div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                          <div class="col-5">
+                            <label class="form-label">Cantidad de referencia</label>
+                            <input class="form-control" type="number" name="reference_quantity" min="0.001" step="0.001"
+                                   value="<?= Helpers::e($supply['reference_quantity'] !== null ? (string)$supply['reference_quantity'] : '') ?>"
+                                   placeholder="Ej: 1">
+                          </div>
+                          <div class="col-7">
+                            <label class="form-label">Unidad del precio</label>
+                            <select class="form-select" name="unit_measure_id" required>
+                              <option value="">Selecciona unidad</option>
+                              <?php foreach ($unitMeasures as $unit): ?>
+                                <option value="<?= (int)$unit['id'] ?>" <?= (int)($supply['unit_measure_id'] ?? 0) === (int)$unit['id'] ? 'selected' : '' ?>>
+                                  <?= Helpers::e($unit['abbreviation'] ? $unit['name'] . ' (' . $unit['abbreviation'] . ')' : $unit['name']) ?>
+                                </option>
+                              <?php endforeach; ?>
+                            </select>
+                          </div>
+                          <div class="col-12 form-text">Ejemplo: S/ 15.00 por 1 kg. En requerimientos también se podrá pedir en gramos y el costo se convertirá automáticamente.</div>
                         </div>
                         <div class="mb-3">
                           <label class="form-label">Estado</label>
@@ -214,9 +243,26 @@ require_once __DIR__ . '/../../core/Pagination.php';
                 <div class="form-text">Selecciona una o mas areas.</div>
               </div>
               <div class="mb-3">
-                <label class="form-label">Precio</label>
+                <label class="form-label">Precio de referencia</label>
                 <input class="form-control" type="number" name="price" min="0" step="0.01" placeholder="Ej: 15.90">
-                <div class="form-text">Opcional.</div>
+              </div>
+              <div class="row g-2 mb-3">
+                <div class="col-5">
+                  <label class="form-label">Cantidad de referencia</label>
+                  <input class="form-control" type="number" name="reference_quantity" min="0.001" step="0.001" placeholder="Ej: 1">
+                </div>
+                <div class="col-7">
+                  <label class="form-label">Unidad del precio</label>
+                  <select class="form-select" name="unit_measure_id" required>
+                    <option value="">Selecciona unidad</option>
+                    <?php foreach ($unitMeasures as $unit): ?>
+                      <option value="<?= (int)$unit['id'] ?>">
+                        <?= Helpers::e($unit['abbreviation'] ? $unit['name'] . ' (' . $unit['abbreviation'] . ')' : $unit['name']) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="col-12 form-text">Ejemplo: precio S/ 15.00, cantidad 1 y unidad kg.</div>
               </div>
               <div class="mb-3">
                 <label class="form-label">Estado</label>

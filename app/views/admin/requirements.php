@@ -8,6 +8,9 @@ $suppliesForJs = array_map(static function ($supply) {
     'id' => (int)$supply['id'],
     'name' => (string)$supply['name'],
     'price' => $supply['price'] !== null ? (float)$supply['price'] : null,
+    'reference_quantity' => $supply['reference_quantity'] !== null ? (float)$supply['reference_quantity'] : null,
+    'unit_measure_id' => (int)($supply['unit_measure_id'] ?? 0),
+    'unit_label' => (string)($supply['unit_measure_abbreviation'] ?: ($supply['unit_measure_name'] ?? '')),
     'area_ids' => array_values(array_filter(array_map('intval', explode(',', (string)($supply['purchase_area_ids'] ?? ''))))),
   ];
 }, $supplies ?? []);
@@ -17,6 +20,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
     'id' => (int)$unit['id'],
     'name' => (string)$unit['name'],
     'abbreviation' => (string)($unit['abbreviation'] ?? ''),
+    'dimension' => UnitMeasure::dimensionFor($unit),
   ];
 }, $unitMeasures ?? []);
 ?>
@@ -324,7 +328,11 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                           </label>
                           <div class="text-end small" style="min-width: 150px;">
                             <?php if ($item['unit_price'] !== null): ?>
-                              <div class="text-muted">Precio: S/ <?= number_format((float)$item['unit_price'], 2) ?></div>
+                              <div class="text-muted">
+                                Precio: S/ <?= number_format((float)$item['unit_price'], 2) ?> por
+                                <?= Helpers::e(rtrim(rtrim(number_format((float)($item['price_reference_quantity'] ?? 1), 3, '.', ''), '0'), '.')) ?>
+                                <?= Helpers::e($item['price_unit_measure_abbreviation'] ?: ($item['price_unit_measure_name'] ?? '')) ?>
+                              </div>
                               <?php if ($item['subtotal'] !== null): ?>
                                 <div class="fw-semibold">Subtotal: S/ <?= number_format((float)$item['subtotal'], 2) ?></div>
                               <?php endif; ?>
@@ -391,20 +399,40 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       const match = availableSupplies().find(function(supply) {
         return String(supply.name || '').trim().toLowerCase() === value;
       });
+      const unitSelect = row?.querySelector('[data-unit-select]');
 
       if (hidden) {
         hidden.value = match ? String(match.id) : '';
       }
       if (error) {
-        error.classList.toggle('d-none', input.value.trim() === '' || !!match);
+        const missingUnit = !!match && !match.unit_measure_id;
+        error.textContent = missingUnit ? 'Este insumo aún no tiene unidad configurada. Edítalo en Insumos.' : 'Selecciona un insumo válido del listado.';
+        error.classList.toggle('d-none', input.value.trim() === '' || (!!match && !missingUnit));
+      }
+      setSupplyUnit(unitSelect, match);
+    }
+
+    function setSupplyUnit(select, supply) {
+      if (!select) return;
+      if (supply && supply.unit_measure_id) {
+        const previousValue = select.value;
+        const baseUnit = requirementUnits.find(unit => Number(unit.id) === Number(supply.unit_measure_id));
+        const compatibleUnits = requirementUnits.filter(unit => Number(unit.id) === Number(supply.unit_measure_id) || (baseUnit?.dimension && unit.dimension === baseUnit.dimension));
+        select.innerHTML = compatibleUnits.map(function(unit) {
+          const label = unit.abbreviation ? unit.name + ' (' + unit.abbreviation + ')' : unit.name;
+          return '<option value="' + unit.id + '">' + label.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
+        }).join('');
+        select.value = compatibleUnits.some(unit => String(unit.id) === previousValue) ? previousValue : String(supply.unit_measure_id);
+        select.classList.add('bg-light');
+      } else {
+        select.innerHTML = '<option value="">' + (supply ? 'Insumo sin unidad configurada' : 'Selecciona primero un insumo') + '</option>';
+        select.value = '';
+        select.classList.remove('bg-light');
       }
     }
 
     function unitOptionsHtml() {
-      return '<option value="">Unidad</option>' + requirementUnits.map(function(unit) {
-        const label = unit.abbreviation ? unit.name + ' (' + unit.abbreviation + ')' : unit.name;
-        return '<option value="' + unit.id + '">' + label.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
-      }).join('');
+      return '<option value="">Selecciona primero un insumo</option>';
     }
 
     function bindRequirementItem(row) {
@@ -417,6 +445,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
         input.addEventListener('change', function() {
           resolveSupply(input);
         });
+        resolveSupply(input);
       }
       if (removeButton) {
         removeButton.addEventListener('click', function() {

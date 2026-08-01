@@ -65,31 +65,16 @@ class FinanceSummary
       $months[$month]['personnel_records'] = (int)$row['records_count'];
     }
 
-    $purchases = $pdo->prepare("
-      SELECT MONTH(ri.purchased_at) AS month_number,
-             COUNT(*) AS records_count,
-             SUM(CASE WHEN ri.quantity IS NULL OR COALESCE(ri.unit_price, s.price) IS NULL THEN 1 ELSE 0 END) AS unpriced_count,
-             COALESCE(SUM(
-               CASE
-                 WHEN ri.quantity IS NOT NULL AND COALESCE(ri.unit_price, s.price) IS NOT NULL
-                 THEN ri.quantity * COALESCE(ri.unit_price, s.price)
-                 ELSE 0
-               END
-             ), 0) AS total
-      FROM requirement_items ri
-      LEFT JOIN supplies s ON s.id=ri.supply_id
-      WHERE ri.is_purchased=1
-        AND ri.purchased_at >= ?
-        AND ri.purchased_at < ?
-      GROUP BY MONTH(ri.purchased_at)
-    ");
-    $purchases->execute([$from . ' 00:00:00', $to . ' 00:00:00']);
-    foreach ($purchases->fetchAll() as $row) {
+    foreach (Requirement::purchaseExpensesByYear($year) as $row) {
       $month = (int)$row['month_number'];
-      $months[$month]['purchases'] = round((float)$row['total'], 2);
-      $months[$month]['purchase_records'] = (int)$row['records_count'];
-      $months[$month]['unpriced_purchases'] = (int)$row['unpriced_count'];
+      $months[$month]['purchases'] += (float)$row['subtotal'];
+      $months[$month]['purchase_records'] += (int)$row['request_count'];
+      $months[$month]['unpriced_purchases'] += (int)$row['unpriced_count'];
     }
+    foreach ($months as &$month) {
+      $month['purchases'] = round($month['purchases'], 2);
+    }
+    unset($month);
 
     $sales = $pdo->prepare("
       SELECT MONTH(period_month) AS month_number,

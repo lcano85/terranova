@@ -7,6 +7,8 @@ $suppliesForJs = array_map(static function ($supply) {
   return [
     'id' => (int)$supply['id'],
     'name' => (string)$supply['name'],
+    'unit_measure_id' => (int)($supply['unit_measure_id'] ?? 0),
+    'unit_label' => (string)($supply['unit_measure_abbreviation'] ?: ($supply['unit_measure_name'] ?? '')),
     'area_ids' => array_values(array_filter(array_map('intval', explode(',', (string)($supply['purchase_area_ids'] ?? ''))))),
   ];
 }, $supplies ?? []);
@@ -16,6 +18,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
     'id' => (int)$unit['id'],
     'name' => (string)$unit['name'],
     'abbreviation' => (string)($unit['abbreviation'] ?? ''),
+    'dimension' => UnitMeasure::dimensionFor($unit),
   ];
 }, $unitMeasures ?? []);
 ?>
@@ -207,20 +210,40 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       const match = availableSupplies().find(function(supply) {
         return String(supply.name || '').trim().toLowerCase() === value;
       });
+      const unitSelect = row?.querySelector('[data-unit-select]');
 
       if (hidden) {
         hidden.value = match ? String(match.id) : '';
       }
       if (error) {
-        error.classList.toggle('d-none', input.value.trim() === '' || !!match);
+        const missingUnit = !!match && !match.unit_measure_id;
+        error.textContent = missingUnit ? 'Este insumo aún no tiene unidad configurada. Comunícalo al administrador.' : 'Selecciona un insumo válido del listado.';
+        error.classList.toggle('d-none', input.value.trim() === '' || (!!match && !missingUnit));
+      }
+      setSupplyUnit(unitSelect, match);
+    }
+
+    function setSupplyUnit(select, supply) {
+      if (!select) return;
+      if (supply && supply.unit_measure_id) {
+        const previousValue = select.value;
+        const baseUnit = requirementUnits.find(unit => Number(unit.id) === Number(supply.unit_measure_id));
+        const compatibleUnits = requirementUnits.filter(unit => Number(unit.id) === Number(supply.unit_measure_id) || (baseUnit?.dimension && unit.dimension === baseUnit.dimension));
+        select.innerHTML = compatibleUnits.map(function(unit) {
+          const label = unit.abbreviation ? unit.name + ' (' + unit.abbreviation + ')' : unit.name;
+          return '<option value="' + unit.id + '">' + label.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
+        }).join('');
+        select.value = compatibleUnits.some(unit => String(unit.id) === previousValue) ? previousValue : String(supply.unit_measure_id);
+        select.classList.add('bg-light');
+      } else {
+        select.innerHTML = '<option value="">' + (supply ? 'Insumo sin unidad configurada' : 'Selecciona primero un insumo') + '</option>';
+        select.value = '';
+        select.classList.remove('bg-light');
       }
     }
 
     function unitOptionsHtml() {
-      return '<option value="">Unidad</option>' + requirementUnits.map(function(unit) {
-        const label = unit.abbreviation ? unit.name + ' (' + unit.abbreviation + ')' : unit.name;
-        return '<option value="' + unit.id + '">' + label.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
-      }).join('');
+      return '<option value="">Selecciona primero un insumo</option>';
     }
 
     function bindRequirementItem(row) {
@@ -233,6 +256,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
         input.addEventListener('change', function() {
           resolveSupply(input);
         });
+        resolveSupply(input);
       }
       if (removeButton) {
         removeButton.addEventListener('click', function() {
