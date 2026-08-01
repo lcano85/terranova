@@ -59,6 +59,57 @@ class UnitMeasure
     return $row ?: null;
   }
 
+  public static function dimensionFor(array|string $unit): ?string
+  {
+    $value = is_array($unit)
+      ? (string)(($unit['abbreviation'] ?? '') ?: ($unit['name'] ?? ''))
+      : $unit;
+    $normalized = self::normalizeUnitCode($value);
+    if (in_array($normalized, ['kg', 'g', 'gr', 'kilogramo', 'kilogramos', 'gramo', 'gramos'], true)) {
+      return 'weight';
+    }
+    if (in_array($normalized, ['l', 'lt', 'litro', 'litros', 'ml', 'mililitro', 'mililitros'], true)) {
+      return 'volume';
+    }
+    if (in_array($normalized, ['und', 'unid', 'unidad', 'unidades'], true)) {
+      return 'unit';
+    }
+    return null;
+  }
+
+  public static function areCompatible(int $fromId, int $toId): bool
+  {
+    if ($fromId <= 0 || $toId <= 0) return false;
+    if ($fromId === $toId) return true;
+    $from = self::find($fromId);
+    $to = self::find($toId);
+    if (!$from || !$to) return false;
+    $fromDimension = self::dimensionFor($from);
+    return $fromDimension !== null && $fromDimension === self::dimensionFor($to);
+  }
+
+  public static function convertQuantity(float $quantity, string $fromUnit, string $toUnit): ?float
+  {
+    $fromCode = self::normalizeUnitCode($fromUnit);
+    $toCode = self::normalizeUnitCode($toUnit);
+    if ($fromCode !== '' && $fromCode === $toCode) return $quantity;
+
+    $fromDimension = self::dimensionFor($fromCode);
+    $toDimension = self::dimensionFor($toCode);
+    if ($fromDimension === null || $fromDimension !== $toDimension) return null;
+
+    $factor = static function (string $code): float {
+      return in_array($code, ['kg', 'kilogramo', 'kilogramos', 'l', 'lt', 'litro', 'litros'], true) ? 1000.0 : 1.0;
+    };
+    return $quantity * $factor($fromCode) / $factor($toCode);
+  }
+
+  private static function normalizeUnitCode(string $unit): string
+  {
+    $value = function_exists('mb_strtolower') ? mb_strtolower(trim($unit), 'UTF-8') : strtolower(trim($unit));
+    return rtrim($value, '.');
+  }
+
   public static function create(array $data): void
   {
     self::ensureSchema();

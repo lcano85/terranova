@@ -552,6 +552,7 @@ class AdminController extends Controller
     $perPage = (int)($_GET['supplies_per_page'] ?? 10);
 
     $purchaseAreas = PurchaseArea::all();
+    $unitMeasures = UnitMeasure::active();
     $suppliesPagination = Supply::paginate($search, $purchaseAreaId, $status, $page, $perPage);
     $supplies = $suppliesPagination['rows'];
     $suppliesPaginationMeta = $suppliesPagination['meta'];
@@ -559,6 +560,7 @@ class AdminController extends Controller
     $this->view('admin/supplies', compact(
       'msg',
       'purchaseAreas',
+      'unitMeasures',
       'supplies',
       'suppliesPaginationMeta',
       'search',
@@ -729,10 +731,7 @@ class AdminController extends Controller
     $weeklyUnpricedItems = 0;
 
     foreach ($rows as $row) {
-      $hasCalculablePrice = $row['unit_price'] !== null && $row['quantity'] !== null;
-      $row['subtotal'] = $hasCalculablePrice
-        ? round((float)$row['unit_price'] * (float)$row['quantity'], 2)
-        : null;
+      $row['subtotal'] = Requirement::calculateSubtotal($row);
 
       if ($row['subtotal'] === null) {
         $weeklyUnpricedItems++;

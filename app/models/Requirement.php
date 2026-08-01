@@ -71,6 +71,14 @@ class Requirement
       ");
     }
 
+    if (empty($existingItemColumns['price_reference_quantity'])) {
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN price_reference_quantity DECIMAL(12,3) NULL AFTER unit_price");
+    }
+    if (empty($existingItemColumns['price_unit_measure_id'])) {
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN price_unit_measure_id INT NULL AFTER price_reference_quantity");
+      $pdo->exec("ALTER TABLE requirement_items ADD KEY idx_requirement_items_price_unit (price_unit_measure_id)");
+    }
+
     if (empty($existingItemColumns['detail'])) {
       $pdo->exec("ALTER TABLE requirement_items ADD COLUMN detail VARCHAR(255) NULL AFTER item_name");
     }
@@ -144,8 +152,8 @@ class Requirement
       $requirementId = (int)$pdo->lastInsertId();
 
       $itemSt = $pdo->prepare("
-        INSERT INTO requirement_items (requirement_id, supply_id, item_name, detail, quantity, unit_measure_id, unit_price, is_purchased)
-        VALUES (?,?,?,?,?,?,?,0)
+        INSERT INTO requirement_items (requirement_id, supply_id, item_name, detail, quantity, unit_measure_id, unit_price, price_reference_quantity, price_unit_measure_id, is_purchased)
+        VALUES (?,?,?,?,?,?,?,?,?,0)
       ");
 
       foreach ($items as $item) {
@@ -158,11 +166,13 @@ class Requirement
             $item['quantity'] ?? null,
             !empty($item['unit_measure_id']) ? (int)$item['unit_measure_id'] : null,
             $item['unit_price'] ?? null,
+            $item['price_reference_quantity'] ?? null,
+            $item['price_unit_measure_id'] ?? null,
           ]);
           continue;
         }
 
-        $itemSt->execute([$requirementId, null, $item, null, null, null, null]);
+        $itemSt->execute([$requirementId, null, $item, null, null, null, null, null, null]);
       }
 
       $pdo->commit();
@@ -233,6 +243,10 @@ class Requirement
         um.name AS unit_measure_name,
         um.abbreviation AS unit_measure_abbreviation,
         COALESCE(ri.unit_price, s.price) AS unit_price,
+        COALESCE(ri.price_reference_quantity, s.reference_quantity) AS price_reference_quantity,
+        COALESCE(ri.price_unit_measure_id, s.unit_measure_id) AS price_unit_measure_id,
+        pum.name AS price_unit_measure_name,
+        pum.abbreviation AS price_unit_measure_abbreviation,
         ri.created_at AS item_created_at,
         ri.is_purchased,
         ri.purchased_at
@@ -242,6 +256,7 @@ class Requirement
       JOIN requirement_items ri ON ri.requirement_id = r.id
       LEFT JOIN supplies s ON s.id = ri.supply_id
       LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
+      LEFT JOIN unit_measures pum ON pum.id = COALESCE(ri.price_unit_measure_id, s.unit_measure_id)
       WHERE r.week_start=?
         AND u.role IN ('admin', 'worker')
       ORDER BY u.first_name ASC, u.last_name ASC, pa.name ASC, r.required_date ASC, ri.id ASC
@@ -291,14 +306,48 @@ class Requirement
         SUM(COALESCE(ri.quantity, 0)) AS total_quantity,
         SUM(
           CASE
-            WHEN ri.quantity IS NOT NULL AND COALESCE(ri.unit_price, s.price) IS NOT NULL
-            THEN ri.quantity * COALESCE(ri.unit_price, s.price)
+            WHEN ri.quantity IS NOT NULL
+              AND COALESCE(ri.unit_price, s.price) IS NOT NULL
+              AND COALESCE(ri.price_reference_quantity, s.reference_quantity) > 0
+              AND ri.unit_measure_id IS NOT NULL
+              AND COALESCE(ri.price_unit_measure_id, s.unit_measure_id) IS NOT NULL
+              AND (
+                ri.unit_measure_id = COALESCE(ri.price_unit_measure_id, s.unit_measure_id)
+                OR (LOWER(TRIM(um_req.abbreviation)) IN ('g','gr') AND LOWER(TRIM(um_price.abbreviation)) = 'kg')
+                OR (LOWER(TRIM(um_req.abbreviation)) = 'kg' AND LOWER(TRIM(um_price.abbreviation)) IN ('g','gr'))
+                OR (LOWER(TRIM(um_req.abbreviation)) = 'ml' AND LOWER(TRIM(um_price.abbreviation)) IN ('l','lt'))
+                OR (LOWER(TRIM(um_req.abbreviation)) IN ('l','lt') AND LOWER(TRIM(um_price.abbreviation)) = 'ml')
+              )
+            THEN COALESCE(ri.unit_price, s.price)
+              * CASE
+                  WHEN ri.unit_measure_id = COALESCE(ri.price_unit_measure_id, s.unit_measure_id) THEN ri.quantity
+                  WHEN LOWER(TRIM(um_req.abbreviation)) IN ('g','gr') AND LOWER(TRIM(um_price.abbreviation)) = 'kg' THEN ri.quantity / 1000
+                  WHEN LOWER(TRIM(um_req.abbreviation)) = 'kg' AND LOWER(TRIM(um_price.abbreviation)) IN ('g','gr') THEN ri.quantity * 1000
+                  WHEN LOWER(TRIM(um_req.abbreviation)) = 'ml' AND LOWER(TRIM(um_price.abbreviation)) IN ('l','lt') THEN ri.quantity / 1000
+                  WHEN LOWER(TRIM(um_req.abbreviation)) IN ('l','lt') AND LOWER(TRIM(um_price.abbreviation)) = 'ml' THEN ri.quantity * 1000
+                  ELSE 0
+                END
+              / COALESCE(NULLIF(ri.price_reference_quantity, 0), NULLIF(s.reference_quantity, 0), 1)
             ELSE 0
           END
         ) AS subtotal,
-        SUM(CASE WHEN ri.quantity IS NULL OR COALESCE(ri.unit_price, s.price) IS NULL THEN 1 ELSE 0 END) AS unpriced_count
+        SUM(CASE WHEN ri.quantity IS NULL
+          OR COALESCE(ri.unit_price, s.price) IS NULL
+          OR COALESCE(ri.price_reference_quantity, s.reference_quantity) IS NULL
+          OR COALESCE(ri.price_reference_quantity, s.reference_quantity) <= 0
+          OR ri.unit_measure_id IS NULL
+          OR COALESCE(ri.price_unit_measure_id, s.unit_measure_id) IS NULL
+          OR NOT (
+            ri.unit_measure_id = COALESCE(ri.price_unit_measure_id, s.unit_measure_id)
+            OR (LOWER(TRIM(um_req.abbreviation)) IN ('g','gr') AND LOWER(TRIM(um_price.abbreviation)) = 'kg')
+            OR (LOWER(TRIM(um_req.abbreviation)) = 'kg' AND LOWER(TRIM(um_price.abbreviation)) IN ('g','gr'))
+            OR (LOWER(TRIM(um_req.abbreviation)) = 'ml' AND LOWER(TRIM(um_price.abbreviation)) IN ('l','lt'))
+            OR (LOWER(TRIM(um_req.abbreviation)) IN ('l','lt') AND LOWER(TRIM(um_price.abbreviation)) = 'ml')
+          ) THEN 1 ELSE 0 END) AS unpriced_count
       FROM requirement_items ri
       LEFT JOIN supplies s ON s.id = ri.supply_id
+      LEFT JOIN unit_measures um_req ON um_req.id = ri.unit_measure_id
+      LEFT JOIN unit_measures um_price ON um_price.id = COALESCE(ri.price_unit_measure_id, s.unit_measure_id)
       WHERE ri.is_purchased=1
         AND ri.purchased_at >= ?
         AND ri.purchased_at < ?
@@ -328,11 +377,11 @@ class Requirement
         ri.item_name AS registered_name,
         ri.quantity,
         COALESCE(ri.unit_price, s.price) AS unit_price,
-        CASE
-          WHEN ri.quantity IS NOT NULL AND COALESCE(ri.unit_price, s.price) IS NOT NULL
-          THEN ri.quantity * COALESCE(ri.unit_price, s.price)
-          ELSE NULL
-        END AS subtotal,
+        COALESCE(ri.price_reference_quantity, s.reference_quantity, 1) AS price_reference_quantity,
+        um_req.name AS unit_measure_name,
+        um_req.abbreviation AS unit_measure_abbreviation,
+        um_price.name AS price_unit_measure_name,
+        um_price.abbreviation AS price_unit_measure_abbreviation,
         ri.purchased_at,
         r.purchase_area_id,
         pa.name AS purchase_area_name,
@@ -342,6 +391,8 @@ class Requirement
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN users u ON u.id = r.user_id
       JOIN supplies s ON s.id = ri.supply_id
+      LEFT JOIN unit_measures um_req ON um_req.id = ri.unit_measure_id
+      LEFT JOIN unit_measures um_price ON um_price.id = COALESCE(ri.price_unit_measure_id, s.unit_measure_id)
       WHERE ri.is_purchased=1
         AND ri.supply_id IS NOT NULL
         AND ri.purchased_at >= ?
@@ -362,7 +413,12 @@ class Requirement
     $sql .= " ORDER BY ri.purchased_at ASC, product_name ASC, ri.id ASC ";
     $st = Database::conn()->prepare($sql);
     $st->execute($params);
-    return $st->fetchAll();
+    $rows = $st->fetchAll();
+    foreach ($rows as &$row) {
+      $row['subtotal'] = self::calculateSubtotal($row);
+    }
+    unset($row);
+    return $rows;
   }
 
   public static function sanitizeItems(array $items): array
@@ -414,6 +470,76 @@ class Requirement
     return trim($name . ' - ' . trim($quantityText . ' ' . $unit));
   }
 
+  public static function purchasedItemsForWorkers(
+    string $dateFrom,
+    string $dateTo,
+    int $purchaseAreaId = 0,
+    string $productSearch = ''
+  ): array {
+    self::ensureSchema();
+    $sql = "
+      SELECT
+        ri.id AS item_id,
+        ri.supply_id,
+        COALESCE(CONCAT('s:', ri.supply_id), CONCAT('n:', LOWER(TRIM(ri.item_name)))) AS product_key,
+        COALESCE(NULLIF(s.name, ''), ri.item_name) AS product_name,
+        ri.quantity,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation,
+        ri.purchased_at,
+        r.purchase_area_id,
+        pa.name AS purchase_area_name
+      FROM requirement_items ri
+      JOIN requirements r ON r.id = ri.requirement_id
+      JOIN purchase_areas pa ON pa.id = r.purchase_area_id
+      LEFT JOIN supplies s ON s.id = ri.supply_id
+      LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
+      WHERE ri.is_purchased=1
+        AND ri.purchased_at >= ?
+        AND ri.purchased_at < DATE_ADD(?, INTERVAL 1 DAY)
+    ";
+    $params = [$dateFrom . ' 00:00:00', $dateTo . ' 00:00:00'];
+    if ($purchaseAreaId > 0) {
+      $sql .= " AND r.purchase_area_id=? ";
+      $params[] = $purchaseAreaId;
+    }
+    if ($productSearch !== '') {
+      $sql .= " AND COALESCE(NULLIF(s.name, ''), ri.item_name) LIKE ? ";
+      $params[] = '%' . $productSearch . '%';
+    }
+    $sql .= " ORDER BY ri.purchased_at DESC, product_name ASC, ri.id DESC ";
+    $st = Database::conn()->prepare($sql);
+    $st->execute($params);
+    return $st->fetchAll();
+  }
+
+  public static function calculateSubtotal(array $item): ?float
+  {
+    if (($item['unit_price'] ?? null) === null || ($item['quantity'] ?? null) === null) {
+      return null;
+    }
+
+    if (($item['price_reference_quantity'] ?? null) === null) {
+      return null;
+    }
+    $referenceQuantity = (float)$item['price_reference_quantity'];
+    if ($referenceQuantity <= 0) {
+      return null;
+    }
+
+    $requestedUnit = (string)(($item['unit_measure_abbreviation'] ?? '') ?: ($item['unit_measure_name'] ?? ''));
+    $priceUnit = (string)(($item['price_unit_measure_abbreviation'] ?? '') ?: ($item['price_unit_measure_name'] ?? ''));
+    if ($requestedUnit === '' || $priceUnit === '') {
+      return null;
+    }
+    $convertedQuantity = UnitMeasure::convertQuantity((float)$item['quantity'], $requestedUnit, $priceUnit);
+    if ($convertedQuantity === null) {
+      return null;
+    }
+
+    return round((float)$item['unit_price'] * $convertedQuantity / $referenceQuantity, 2);
+  }
+
   public static function sanitizeStructuredItems(array $itemNames, array $supplyIds, array $quantities, array $unitMeasureIds, int $purchaseAreaId = 0, array $details = []): array
   {
     self::ensureSchema();
@@ -442,7 +568,7 @@ class Requirement
       }
 
       $supplySt = Database::conn()->prepare("
-        SELECT s.id, s.name, s.price, s.purchase_area_id
+        SELECT s.id, s.name, s.price, s.reference_quantity, s.unit_measure_id, s.purchase_area_id
         FROM supplies s
         WHERE s.id=?
           AND s.is_active=1
@@ -471,6 +597,12 @@ class Requirement
       if ($unitMeasureId <= 0 || !UnitMeasure::find($unitMeasureId)) {
         throw new RuntimeException('Debes seleccionar una unidad de medida para ' . $itemName . '.');
       }
+      if ((int)($supply['unit_measure_id'] ?? 0) <= 0) {
+        throw new RuntimeException('El insumo ' . $itemName . ' no tiene una unidad de medida configurada. Editalo en Insumos.');
+      }
+      if (!UnitMeasure::areCompatible($unitMeasureId, (int)$supply['unit_measure_id'])) {
+        throw new RuntimeException('La unidad seleccionada para ' . $itemName . ' no es compatible con la configurada en Insumos.');
+      }
 
       $itemName = (string)$supply['name'];
       $normalized = self::normalizeItemName($itemName);
@@ -487,6 +619,8 @@ class Requirement
         'quantity' => $quantity,
         'unit_measure_id' => $unitMeasureId,
         'unit_price' => $supply['price'] !== null ? (float)$supply['price'] : null,
+        'price_reference_quantity' => $supply['reference_quantity'] !== null ? (float)$supply['reference_quantity'] : null,
+        'price_unit_measure_id' => (int)$supply['unit_measure_id'],
         'purchase_area_id' => (int)$supply['purchase_area_id'],
       ];
     }

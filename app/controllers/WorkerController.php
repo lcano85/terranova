@@ -16,6 +16,80 @@ require_once __DIR__ . '/../models/Payroll.php';
 require_once __DIR__ . '/../core/NotificationMailer.php';
 
 class WorkerController extends Controller {
+  public function purchaseFrequency(): void
+  {
+    Auth::requireRole('worker');
+    $today = new DateTimeImmutable('today');
+    $dateFrom = $this->workerValidDate((string)($_GET['date_from'] ?? '')) ?? $today->modify('-6 months')->format('Y-m-d');
+    $dateTo = $this->workerValidDate((string)($_GET['date_to'] ?? '')) ?? $today->format('Y-m-d');
+    if ($dateFrom > $dateTo) [$dateFrom, $dateTo] = [$dateTo, $dateFrom];
+
+    $purchaseAreaId = max(0, (int)($_GET['purchase_area_id'] ?? 0));
+    $productSearch = trim((string)($_GET['product'] ?? ''));
+    $priorityFilter = trim((string)($_GET['priority'] ?? ''));
+    if (!in_array($priorityFilter, ['high', 'medium', 'normal', 'observation'], true)) $priorityFilter = '';
+
+    $rows = Requirement::purchasedItemsForWorkers($dateFrom, $dateTo, $purchaseAreaId, $productSearch);
+    $products = [];
+    foreach ($rows as $row) {
+      $key = (string)$row['product_key'];
+      $date = date('Y-m-d', strtotime($row['purchased_at']));
+      if (!isset($products[$key])) {
+        $products[$key] = ['product_name'=>$row['product_name'], 'dates'=>[], 'purchases'=>[], 'purchase_count'=>0];
+      }
+      $products[$key]['dates'][$date] = true;
+      $products[$key]['purchases'][] = $row;
+      $products[$key]['purchase_count']++;
+    }
+
+    foreach ($products as &$product) {
+      $dates = array_keys($product['dates']);
+      sort($dates);
+      $intervals = [];
+      for ($i=1,$count=count($dates);$i<$count;$i++) {
+        $intervals[] = (int)(new DateTimeImmutable($dates[$i-1]))->diff(new DateTimeImmutable($dates[$i]))->days;
+      }
+      $product['dates'] = $dates;
+      $product['last_purchase'] = $dates ? end($dates) : null;
+      $product['frequency_text'] = 'Datos insuficientes';
+      $product['next_purchase'] = null;
+      $product['priority_key'] = 'observation';
+      $product['priority_text'] = 'En observación';
+      $product['priority_class'] = 'secondary';
+      $product['priority_order'] = 4;
+
+      if (count($dates) >= 3) {
+        sort($intervals);
+        $middle = intdiv(count($intervals), 2);
+        $median = count($intervals) % 2 ? (float)$intervals[$middle] : ($intervals[$middle-1]+$intervals[$middle])/2;
+        $spread = max($intervals)-min($intervals);
+        $irregular = $spread > max(3, $median * .5);
+        $product['frequency_text'] = $irregular ? 'Irregular' : 'Cada ' . rtrim(rtrim(number_format($median,1,'.',''),'0'),'.') . ' día(s)';
+        $product['next_purchase'] = (new DateTimeImmutable($product['last_purchase']))->modify('+' . max(1,(int)round($median)) . ' days')->format('Y-m-d');
+        $days = (int)$today->diff(new DateTimeImmutable($product['next_purchase']))->format('%r%a');
+        if ($days <= 0) {
+          $product['priority_key']='high'; $product['priority_text']=$days < 0 ? 'Alta · vencido por '.abs($days).' día(s)' : 'Alta · comprar hoy'; $product['priority_class']='danger'; $product['priority_order']=1;
+        } elseif ($days <= 7 || $irregular) {
+          $product['priority_key']='medium'; $product['priority_text']=$irregular ? 'Media · compra irregular' : 'Media · próximo en '.$days.' día(s)'; $product['priority_class']='warning'; $product['priority_order']=2;
+        } else {
+          $product['priority_key']='normal'; $product['priority_text']='Normal · dentro del ciclo'; $product['priority_class']='success'; $product['priority_order']=3;
+        }
+      }
+    }
+    unset($product);
+
+    $products = array_values(array_filter($products, static fn(array $p): bool => $priorityFilter === '' || $p['priority_key'] === $priorityFilter));
+    usort($products, static fn(array $a,array $b): int => $a['priority_order'] <=> $b['priority_order'] ?: strcasecmp($a['product_name'],$b['product_name']));
+    $areas = PurchaseArea::active();
+    $this->view('worker/purchase_frequency', compact('dateFrom','dateTo','purchaseAreaId','productSearch','priorityFilter','products','areas'));
+  }
+
+  private function workerValidDate(string $date): ?string
+  {
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    return $parsed && $parsed->format('Y-m-d') === $date ? $date : null;
+  }
+
   private function notifyAdminsAboutRequirement(int $requirementId): void
   {
     $recipients = NotificationMailer::adminRecipients();

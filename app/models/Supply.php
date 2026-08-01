@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../core/Database.php';
 require_once __DIR__ . '/PurchaseArea.php';
+require_once __DIR__ . '/UnitMeasure.php';
 
 class Supply
 {
@@ -61,6 +62,18 @@ class Supply
       $pdo->exec("ALTER TABLE supplies ADD COLUMN price DECIMAL(12,2) NULL AFTER normalized_name");
     }
 
+    $referenceQuantityColumn = $pdo->query("SHOW COLUMNS FROM supplies LIKE 'reference_quantity'")->fetch();
+    if (!$referenceQuantityColumn) {
+      $pdo->exec("ALTER TABLE supplies ADD COLUMN reference_quantity DECIMAL(12,3) NULL AFTER price");
+    }
+
+    $unitMeasureColumn = $pdo->query("SHOW COLUMNS FROM supplies LIKE 'unit_measure_id'")->fetch();
+    if (!$unitMeasureColumn) {
+      UnitMeasure::ensureSchema();
+      $pdo->exec("ALTER TABLE supplies ADD COLUMN unit_measure_id INT NULL AFTER reference_quantity");
+      $pdo->exec("ALTER TABLE supplies ADD KEY idx_supplies_unit_measure (unit_measure_id)");
+    }
+
     $hasUniqueNameIndex = $pdo->query("
       SHOW INDEX FROM supplies WHERE Key_name = 'uq_supplies_normalized_name'
     ")->fetch();
@@ -114,6 +127,10 @@ class Supply
         s.name,
         s.normalized_name,
         s.price,
+        s.reference_quantity,
+        s.unit_measure_id,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation,
         s.is_active,
         s.created_at,
         s.updated_at,
@@ -122,8 +139,9 @@ class Supply
       FROM supplies s
       LEFT JOIN supply_purchase_areas spa ON spa.supply_id = s.id
       LEFT JOIN purchase_areas pa ON pa.id = spa.purchase_area_id
+      LEFT JOIN unit_measures um ON um.id = s.unit_measure_id
       {$where}
-      GROUP BY s.id, s.purchase_area_id, s.name, s.normalized_name, s.price, s.is_active, s.created_at, s.updated_at
+      GROUP BY s.id, s.purchase_area_id, s.name, s.normalized_name, s.price, s.reference_quantity, s.unit_measure_id, um.name, um.abbreviation, s.is_active, s.created_at, s.updated_at
       ORDER BY s.name ASC
       LIMIT {$perPage} OFFSET {$offset}
     ";
@@ -155,14 +173,16 @@ class Supply
 
     try {
       $st = $pdo->prepare("
-        INSERT INTO supplies (purchase_area_id, name, normalized_name, price, is_active)
-        VALUES (?,?,?,?,?)
+        INSERT INTO supplies (purchase_area_id, name, normalized_name, price, reference_quantity, unit_measure_id, is_active)
+        VALUES (?,?,?,?,?,?,?)
       ");
       $st->execute([
         $payload['primary_purchase_area_id'],
         $payload['name'],
         self::normalize($payload['name']),
         $payload['price'],
+        $payload['reference_quantity'],
+        $payload['unit_measure_id'],
         $payload['is_active'],
       ]);
 
@@ -191,7 +211,7 @@ class Supply
     try {
       $st = $pdo->prepare("
         UPDATE supplies
-        SET purchase_area_id=?, name=?, normalized_name=?, price=?, is_active=?, updated_at=NOW()
+        SET purchase_area_id=?, name=?, normalized_name=?, price=?, reference_quantity=?, unit_measure_id=?, is_active=?, updated_at=NOW()
         WHERE id=?
       ");
       $st->execute([
@@ -199,6 +219,8 @@ class Supply
         $payload['name'],
         self::normalize($payload['name']),
         $payload['price'],
+        $payload['reference_quantity'],
+        $payload['unit_measure_id'],
         $payload['is_active'],
         $id,
       ]);
@@ -228,11 +250,16 @@ class Supply
         s.id,
         s.name,
         s.price,
+        s.reference_quantity,
+        s.unit_measure_id,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation,
         GROUP_CONCAT(spa.purchase_area_id ORDER BY spa.purchase_area_id ASC SEPARATOR ',') AS purchase_area_ids
       FROM supplies s
       JOIN supply_purchase_areas spa ON spa.supply_id = s.id
+      LEFT JOIN unit_measures um ON um.id = s.unit_measure_id
       WHERE s.is_active=1
-      GROUP BY s.id, s.name, s.price
+      GROUP BY s.id, s.name, s.price, s.reference_quantity, s.unit_measure_id, um.name, um.abbreviation
       ORDER BY s.name ASC
     ");
     return $st->fetchAll();
@@ -266,6 +293,21 @@ class Supply
       $price = number_format((float)$rawPrice, 2, '.', '');
     }
 
+    $rawReferenceQuantity = trim((string)($data['reference_quantity'] ?? ''));
+    $unitMeasureId = (int)($data['unit_measure_id'] ?? 0);
+    $referenceQuantity = null;
+    if ($unitMeasureId <= 0 || !UnitMeasure::find($unitMeasureId)) {
+      throw new RuntimeException('Debes seleccionar la unidad de medida del insumo.');
+    }
+    if ($rawPrice !== '') {
+      if ($rawReferenceQuantity === '' || !is_numeric(str_replace(',', '.', $rawReferenceQuantity)) || (float)str_replace(',', '.', $rawReferenceQuantity) <= 0) {
+        throw new RuntimeException('La cantidad de referencia debe ser mayor a cero cuando registras un precio.');
+      }
+      $referenceQuantity = number_format((float)str_replace(',', '.', $rawReferenceQuantity), 3, '.', '');
+    } elseif ($rawReferenceQuantity !== '') {
+      throw new RuntimeException('Ingresa el precio o deja vacia la cantidad de referencia.');
+    }
+
     foreach ($purchaseAreaIds as $purchaseAreaId) {
       if (!PurchaseArea::find($purchaseAreaId)) {
         throw new RuntimeException('Debes seleccionar areas de compra validas.');
@@ -277,6 +319,8 @@ class Supply
       'primary_purchase_area_id' => $purchaseAreaIds[0],
       'purchase_area_ids' => $purchaseAreaIds,
       'price' => $price,
+      'reference_quantity' => $referenceQuantity,
+      'unit_measure_id' => $unitMeasureId,
       'is_active' => (int)($data['is_active'] ?? 1) === 1 ? 1 : 0,
     ];
   }

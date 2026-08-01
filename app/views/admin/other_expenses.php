@@ -53,7 +53,7 @@ $monthNames = [
         </form>
       </div>
 
-      <form method="POST">
+      <form method="POST" id="monthlyExpensesForm">
         <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
         <input type="hidden" name="action" value="save_month">
         <input type="hidden" name="period" value="<?= Helpers::e(date('Y-m', strtotime($periodMonth))) ?>">
@@ -78,14 +78,14 @@ $monthNames = [
                       <input class="form-control text-end" type="number" min="0" step="0.01"
                         name="amounts[<?= (int)$entry['expense_detail_id'] ?>]"
                         value="<?= (float)$entry['amount'] > 0 ? Helpers::e(number_format((float)$entry['amount'], 2, '.', '')) : '' ?>"
-                        placeholder="0.00">
+                        placeholder="0.00" data-monthly-expense-amount>
                     </div>
                   </td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
             <tfoot class="table-light">
-              <tr><th class="text-end">Total del mes</th><th class="text-end fs-5">S/ <?= number_format($monthTotal, 2) ?></th></tr>
+              <tr><th class="text-end">Total del mes</th><th class="text-end fs-5" id="monthlyExpensesTotal">S/ <?= number_format($monthTotal, 2) ?></th></tr>
             </tfoot>
           </table>
         </div>
@@ -175,5 +175,31 @@ document.getElementById('editExpenseDetailModal')?.addEventListener('show.bs.mod
   document.getElementById('editExpenseDetailId').value = button?.dataset.expenseDetailId || '';
   document.getElementById('editExpenseDetailName').value = button?.dataset.expenseDetailName || '';
 });
+
+const monthlyExpensesForm = document.getElementById('monthlyExpensesForm');
+const monthlyExpensesTotal = document.getElementById('monthlyExpensesTotal');
+
+function updateMonthlyExpensesTotal() {
+  if (!monthlyExpensesForm || !monthlyExpensesTotal) return;
+
+  const total = Array.from(monthlyExpensesForm.querySelectorAll('[data-monthly-expense-amount]'))
+    .reduce(function(sum, input) {
+      const amount = Number.parseFloat(String(input.value || '').replace(',', '.'));
+      return sum + (Number.isFinite(amount) && amount > 0 ? amount : 0);
+    }, 0);
+
+  monthlyExpensesTotal.textContent = 'S/ ' + total.toLocaleString('es-PE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+monthlyExpensesForm?.addEventListener('input', function(event) {
+  if (event.target.matches('[data-monthly-expense-amount]')) updateMonthlyExpensesTotal();
+});
+monthlyExpensesForm?.addEventListener('change', function(event) {
+  if (event.target.matches('[data-monthly-expense-amount]')) updateMonthlyExpensesTotal();
+});
+updateMonthlyExpensesTotal();
 </script>
 <?php require __DIR__ . '/../layouts/footer.php'; ?>
