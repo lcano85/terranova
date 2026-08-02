@@ -244,6 +244,7 @@ class Security
     $add('admin.commercial', 'Comercial', null, 50, 'admin');
     $add('admin.products', 'Productos', '/admin/products', 51, 'admin', 'admin.commercial');
     $add('admin.costing', 'Costeo de platos', '/admin/costing', 52, 'admin', 'admin.commercial');
+    $add('admin.delivery_pricing', 'Precios delivery', '/admin/delivery-pricing', 525, 'admin', 'admin.commercial');
     $add('admin.recipes', 'Recetario', '/admin/recipes', 53, 'admin', 'admin.commercial');
     $add('admin.sales', 'Ventas', '/admin/sales', 54, 'admin', 'admin.commercial');
     $add('admin.sales_statistics', 'Estadísticas de ventas', '/admin/sales/statistics', 55, 'admin', 'admin.commercial');

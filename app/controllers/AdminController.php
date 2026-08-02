@@ -20,6 +20,7 @@ require_once __DIR__ . '/../models/InventoryItem.php';
 require_once __DIR__ . '/../models/BeverageControl.php';
 require_once __DIR__ . '/../models/ProductCategory.php';
 require_once __DIR__ . '/../models/Product.php';
+require_once __DIR__ . '/../models/DeliveryPricing.php';
 require_once __DIR__ . '/../models/Costing.php';
 require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MonthlyProductSale.php';
@@ -1843,6 +1844,34 @@ class AdminController extends Controller
     $rows = Product::byCategory($categoryId > 0 ? $categoryId : null, $search);
 
     $this->view('admin/products', compact('msg', 'summary', 'categories', 'grouped', 'rows', 'categoryId', 'search'));
+  }
+
+  public function deliveryPricing(): void
+  {
+    Auth::requireRole('admin');
+    $msg = null;
+    if (Helpers::isPost()) {
+      Csrf::check();
+      try {
+        $action = (string)($_POST['action'] ?? '');
+        if ($action === 'update_commissions') {
+          DeliveryPricing::updateCommissions((array)($_POST['commissions'] ?? []));
+          $msg = ['type'=>'success','text'=>'Comisiones actualizadas. Todos los precios sugeridos fueron recalculados.'];
+        }
+        if ($action === 'save_product_prices') {
+          DeliveryPricing::saveProductPrices((int)($_POST['product_id'] ?? 0),(array)($_POST['prices'] ?? []));
+          $msg = ['type'=>'success','text'=>'Precios de delivery guardados.'];
+        }
+      } catch (Throwable $e) {
+        $msg = ['type'=>'danger','text'=>'Error: '.$e->getMessage()];
+      }
+    }
+    $search=trim((string)($_GET['q']??''));
+    $categoryId=max(0,(int)($_GET['category_id']??0));
+    $platforms=DeliveryPricing::platforms();
+    $products=DeliveryPricing::products($search,$categoryId);
+    $categories=ProductCategory::all();
+    $this->view('admin/delivery_pricing',compact('msg','search','categoryId','platforms','products','categories'));
   }
 
   public function costing(): void
