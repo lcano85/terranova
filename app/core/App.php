@@ -40,6 +40,7 @@ class App {
       '/admin/beverages' => ['AdminController', 'beverages'],
       '/admin/products' => ['AdminController', 'products'],
       '/admin/costing' => ['AdminController', 'costing'],
+      '/admin/delivery-pricing' => ['AdminController', 'deliveryPricing'],
       '/admin/recipes' => ['AdminController', 'recipes'],
       '/admin/sales' => ['AdminController', 'sales'],
       '/admin/sales/statistics' => ['AdminController', 'salesStatistics'],
