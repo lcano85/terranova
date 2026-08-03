@@ -21,6 +21,7 @@ require_once __DIR__ . '/../models/BeverageControl.php';
 require_once __DIR__ . '/../models/ProductCategory.php';
 require_once __DIR__ . '/../models/Product.php';
 require_once __DIR__ . '/../models/DeliveryPricing.php';
+require_once __DIR__ . '/../models/Incentive.php';
 require_once __DIR__ . '/../models/Costing.php';
 require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MonthlyProductSale.php';
@@ -1872,6 +1873,24 @@ class AdminController extends Controller
     $products=DeliveryPricing::products($search,$categoryId);
     $categories=ProductCategory::all();
     $this->view('admin/delivery_pricing',compact('msg','search','categoryId','platforms','products','categories'));
+  }
+
+  public function incentives(): void
+  {
+    Auth::requireRole('admin');
+    $msg=null;
+    if(Helpers::isPost()){
+      Csrf::check();
+      try{
+        $action=(string)($_POST['action']??'');
+        if($action==='create'){Incentive::create($_POST);$msg=['type'=>'success','text'=>'Incentivo o bono creado.'];}
+        if($action==='update'){Incentive::update((int)($_POST['id']??0),$_POST);$msg=['type'=>'success','text'=>'Incentivo o bono actualizado.'];}
+        if($action==='delete'){Incentive::delete((int)($_POST['id']??0));$msg=['type'=>'warning','text'=>'Incentivo o bono eliminado.'];}
+      }catch(Throwable $e){$msg=['type'=>'danger','text'=>'Error: '.$e->getMessage()];}
+    }
+    $search=trim((string)($_GET['q']??''));$status=(string)($_GET['status']??'');$publication=(string)($_GET['publication']??'');
+    $incentives=Incentive::all($search,$status,$publication);
+    $this->view('admin/incentives',compact('msg','search','status','publication','incentives'));
   }
 
   public function costing(): void
