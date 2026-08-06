@@ -14,9 +14,17 @@ require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MailNotificationLog.php';
 require_once __DIR__ . '/../models/Payroll.php';
 require_once __DIR__ . '/../models/Incentive.php';
+require_once __DIR__ . '/../models/JobFunction.php';
 require_once __DIR__ . '/../core/NotificationMailer.php';
 
 class WorkerController extends Controller {
+  public function jobFunctions(): void
+  {
+    Auth::requireRole('worker');
+    $functions=JobFunction::publishedForWorker((int)Auth::user()['id']);
+    $this->view('worker/job_functions',compact('functions'));
+  }
+
   public function incentives(): void
   {
     Auth::requireRole('worker');
