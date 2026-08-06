@@ -22,6 +22,7 @@ require_once __DIR__ . '/../models/ProductCategory.php';
 require_once __DIR__ . '/../models/Product.php';
 require_once __DIR__ . '/../models/DeliveryPricing.php';
 require_once __DIR__ . '/../models/Incentive.php';
+require_once __DIR__ . '/../models/JobFunction.php';
 require_once __DIR__ . '/../models/Costing.php';
 require_once __DIR__ . '/../models/Recipe.php';
 require_once __DIR__ . '/../models/MonthlyProductSale.php';
@@ -1891,6 +1892,24 @@ class AdminController extends Controller
     $search=trim((string)($_GET['q']??''));$status=(string)($_GET['status']??'');$publication=(string)($_GET['publication']??'');
     $incentives=Incentive::all($search,$status,$publication);
     $this->view('admin/incentives',compact('msg','search','status','publication','incentives'));
+  }
+
+  public function jobFunctions(): void
+  {
+    Auth::requireRole('admin'); $msg=null;
+    if (Helpers::isPost()) {
+      Csrf::check();
+      try {
+        $action=(string)($_POST['action']??'');
+        if ($action==='create') { JobFunction::create($_POST); $msg=['type'=>'success','text'=>'Funciones registradas correctamente.']; }
+        elseif ($action==='update') { JobFunction::update((int)($_POST['id']??0),$_POST); $msg=['type'=>'success','text'=>'Funciones actualizadas correctamente.']; }
+        elseif ($action==='delete') { JobFunction::delete((int)($_POST['id']??0)); $msg=['type'=>'warning','text'=>'Registro eliminado.']; }
+      } catch (Throwable $e) { $msg=['type'=>'danger','text'=>'Error: '.$e->getMessage()]; }
+    }
+    $search=trim((string)($_GET['q']??'')); $areaId=max(0,(int)($_GET['area_id']??0));
+    $status=(string)($_GET['status']??''); $publication=(string)($_GET['publication']??'');
+    $areas=WorkArea::all(); $functions=JobFunction::all($search,$areaId,$status,$publication);
+    $this->view('admin/job_functions',compact('msg','search','areaId','status','publication','areas','functions'));
   }
 
   public function costing(): void
