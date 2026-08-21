@@ -400,6 +400,20 @@ class WorkerController extends Controller {
       $action = $_POST['action'] ?? 'save_draft';
 
       try {
+        if ($action === 'confirm_received') {
+          $itemId = (int)($_POST['item_id'] ?? 0);
+          if ($itemId <= 0) {
+            throw new RuntimeException('Producto no válido.');
+          }
+          Requirement::setReceivedByWorker($itemId, (int)$user['id'], isset($_POST['is_received']) ? 1 : 0);
+          $msg = [
+            'type' => 'success',
+            'text' => isset($_POST['is_received'])
+              ? 'Recepción del producto confirmada.'
+              : 'Se retiró la confirmación de recepción.',
+          ];
+        }
+
         if ($action === 'delete_item') {
           Requirement::deleteItem((int)($_POST['item_id'] ?? 0), (int)$user['id'], true);
           $msg = ['type' => 'success', 'text' => 'Item eliminado del borrador'];
@@ -509,6 +523,62 @@ class WorkerController extends Controller {
     }
 
     $this->view('worker/requirements', compact('user', 'supplies', 'unitMeasures', 'defaultDate', 'formItems', 'msg', 'week', 'grouped'));
+  }
+
+  public function validateRequirements(): void
+  {
+    Auth::requireRole('worker');
+    $user = Auth::user();
+    $msg = null;
+    $selectedWeekStart = Requirement::normalizeWeekStart($_GET['week_start'] ?? $_POST['week_start'] ?? null);
+
+    if (Helpers::isPost()) {
+      Csrf::check();
+      try {
+        $itemId = (int)($_POST['item_id'] ?? 0);
+        if ($itemId <= 0) {
+          throw new RuntimeException('Producto no válido.');
+        }
+        $isReceived = isset($_POST['is_received']) ? 1 : 0;
+        Requirement::setReceivedByWorker($itemId, (int)$user['id'], $isReceived);
+        $msg = [
+          'type' => 'success',
+          'text' => $isReceived ? 'Producto marcado como recibido.' : 'Se retiró la confirmación de recepción.',
+        ];
+      } catch (Throwable $e) {
+        $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
+      }
+    }
+
+    $week = Requirement::weekRangeForDate($selectedWeekStart);
+    $weekOptions = Requirement::weekOptions(12);
+    if (!in_array($selectedWeekStart, array_column($weekOptions, 'from'), true)) {
+      $weekOptions[] = [
+        'from' => $week['from'],
+        'to' => $week['to'],
+        'label' => date('d/m/Y', strtotime($week['from'])) . ' - ' . date('d/m/Y', strtotime($week['to'])),
+      ];
+    }
+    $rows = Requirement::submittedForWorkerWeek((int)$user['id'], $selectedWeekStart);
+    $grouped = [];
+    $receivedCount = 0;
+    foreach ($rows as $row) {
+      $key = $row['required_date'] . '|' . $row['purchase_area_name'];
+      if (!isset($grouped[$key])) {
+        $grouped[$key] = [
+          'required_date' => $row['required_date'],
+          'purchase_area_name' => $row['purchase_area_name'],
+          'items' => [],
+        ];
+      }
+      $grouped[$key]['items'][] = $row;
+      $receivedCount += (int)$row['is_received'] === 1 ? 1 : 0;
+    }
+    $totalCount = count($rows);
+
+    $this->view('worker/validate_requirements', compact(
+      'user', 'msg', 'selectedWeekStart', 'week', 'weekOptions', 'grouped', 'receivedCount', 'totalCount'
+    ));
   }
 
   public function activities(): void {

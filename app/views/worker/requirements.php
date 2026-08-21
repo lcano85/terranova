@@ -137,8 +137,8 @@ $unitMeasuresForJs = array_map(static function ($unit) {
             </div>
             <div class="d-flex flex-column gap-2">
               <?php foreach ($group['items'] as $item): ?>
-                <div class="d-flex justify-content-between align-items-center gap-2 border rounded px-3 py-2">
-                  <div>
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-stretch align-items-md-center gap-2 border rounded px-3 py-2">
+                  <div class="flex-grow-1">
                     <?= Helpers::e(Requirement::itemDisplayName($item)) ?>
                     <?php if (!empty($item['detail'])): ?>
                       <div class="small text-muted">Detalle: <?= Helpers::e($item['detail']) ?></div>
@@ -155,6 +155,12 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                         </div>
                       <?php endif; ?>
                     <?php endif; ?>
+                    <?php if ((int)($item['is_received'] ?? 0) === 1 && !empty($item['received_at'])): ?>
+                      <div class="small text-success mt-1">
+                        Recibido el <?= Helpers::e(date('d/m/Y', strtotime($item['received_at']))) ?>
+                        a las <?= Helpers::e(date('H:i', strtotime($item['received_at']))) ?>
+                      </div>
+                    <?php endif; ?>
                   </div>
                   <?php if (($group['status'] ?? '') === 'draft'): ?>
                     <form method="POST" onsubmit="return confirm('Eliminar este item del borrador?');">
@@ -162,6 +168,25 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                       <input type="hidden" name="action" value="delete_item">
                       <input type="hidden" name="item_id" value="<?= (int)$item['item_id'] ?>">
                       <button class="btn btn-sm btn-outline-danger">Eliminar</button>
+                    </form>
+                  <?php else: ?>
+                    <form method="POST" class="border rounded px-3 py-2 bg-light">
+                      <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+                      <input type="hidden" name="action" value="confirm_received">
+                      <input type="hidden" name="item_id" value="<?= (int)$item['item_id'] ?>">
+                      <div class="form-check m-0">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          name="is_received"
+                          value="1"
+                          id="workerReceivedItem<?= (int)$item['item_id'] ?>"
+                          onchange="this.form.submit()"
+                          <?= (int)($item['is_received'] ?? 0) === 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label fw-semibold text-nowrap" for="workerReceivedItem<?= (int)$item['item_id'] ?>">
+                          Sí llegó
+                        </label>
+                      </div>
                     </form>
                   <?php endif; ?>
                 </div>

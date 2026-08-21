@@ -195,6 +195,10 @@ class Security
         $pdo->prepare("INSERT IGNORE INTO security_role_permissions (role_id, permission_id) VALUES (?,?)")
           ->execute([$roleIds['trabajador'], $ids['worker.job_functions']]);
       }
+      if (isset($ids['worker.validate_requirements'])) {
+        $pdo->prepare("INSERT IGNORE INTO security_role_permissions (role_id, permission_id) VALUES (?,?)")
+          ->execute([$roleIds['trabajador'], $ids['worker.validate_requirements']]);
+      }
       $pdo->prepare("UPDATE users SET security_role_id=? WHERE role='worker' AND security_role_id IS NULL")
         ->execute([$roleIds['trabajador']]);
     }
@@ -222,6 +226,10 @@ class Security
       if (isset($ids['worker.job_functions'])) {
         $pdo->prepare("INSERT IGNORE INTO security_role_permissions (role_id, permission_id) VALUES (?,?)")
           ->execute([$roleIds['barra'], $ids['worker.job_functions']]);
+      }
+      if (isset($ids['worker.validate_requirements'])) {
+        $pdo->prepare("INSERT IGNORE INTO security_role_permissions (role_id, permission_id) VALUES (?,?)")
+          ->execute([$roleIds['barra'], $ids['worker.validate_requirements']]);
       }
       $pdo->prepare("UPDATE users SET security_role_id=? WHERE document_number=? AND role='worker'")
         ->execute([$roleIds['barra'], '74581146']);
@@ -293,6 +301,7 @@ class Security
     $add('worker.job_functions', 'Mis funciones', '/worker/job-functions', 1226, 'worker', 'worker.self_service');
     $add('worker.inventory', 'Inventario', '/worker/inventory', 123, 'worker', 'worker.self_service');
     $add('worker.requirements', 'Requerimientos', '/worker/requirements', 124, 'worker', 'worker.self_service');
+    $add('worker.validate_requirements', 'Validar requerimiento', '/worker/requirements/validate', 1241, 'worker', 'worker.self_service');
     $add('worker.purchase_frequency', 'Productos comprados', '/worker/purchase-frequency', 1245, 'worker', 'worker.self_service');
     $add('worker.activities', 'Actividades', '/worker/activities', 125, 'worker', 'worker.self_service');
     $add('worker.tasks', 'Tareas', '/worker/tasks', 126, 'worker', 'worker.self_service');
