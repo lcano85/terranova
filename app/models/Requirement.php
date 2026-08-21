@@ -87,6 +87,14 @@ class Requirement
       $pdo->exec("ALTER TABLE requirement_items ADD COLUMN purchased_at DATETIME NULL AFTER is_purchased");
     }
 
+    if (empty($existingItemColumns['is_received'])) {
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN is_received TINYINT(1) NOT NULL DEFAULT 0 AFTER purchased_at");
+    }
+
+    if (empty($existingItemColumns['received_at'])) {
+      $pdo->exec("ALTER TABLE requirement_items ADD COLUMN received_at DATETIME NULL AFTER is_received");
+    }
+
     $purchasedAtIndex = $pdo->query("SHOW INDEX FROM requirement_items WHERE Key_name = 'idx_requirement_items_purchased_at'")->fetch();
     if (!$purchasedAtIndex) {
       $pdo->exec("ALTER TABLE requirement_items ADD KEY idx_requirement_items_purchased_at (purchased_at)");
@@ -206,7 +214,9 @@ class Requirement
         um.abbreviation AS unit_measure_abbreviation,
         ri.created_at AS item_created_at,
         ri.is_purchased,
-        ri.purchased_at
+        ri.purchased_at,
+        ri.is_received,
+        ri.received_at
       FROM requirements r
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
       JOIN requirement_items ri ON ri.requirement_id = r.id
@@ -249,7 +259,9 @@ class Requirement
         pum.abbreviation AS price_unit_measure_abbreviation,
         ri.created_at AS item_created_at,
         ri.is_purchased,
-        ri.purchased_at
+        ri.purchased_at,
+        ri.is_received,
+        ri.received_at
       FROM requirements r
       JOIN users u ON u.id = r.user_id
       JOIN purchase_areas pa ON pa.id = r.purchase_area_id
@@ -263,6 +275,69 @@ class Requirement
     ");
     $st->execute([$weekStart]);
     return $st->fetchAll();
+  }
+
+  public static function submittedForWorkerWeek(int $userId, string $weekStart): array
+  {
+    self::ensureSchema();
+    $st = Database::conn()->prepare("
+      SELECT
+        r.id AS requirement_id,
+        r.required_date,
+        r.week_start,
+        r.week_end,
+        r.submitted_at,
+        pa.name AS purchase_area_name,
+        ri.id AS item_id,
+        ri.supply_id,
+        ri.item_name,
+        ri.detail,
+        ri.quantity,
+        um.name AS unit_measure_name,
+        um.abbreviation AS unit_measure_abbreviation,
+        ri.is_purchased,
+        ri.purchased_at,
+        ri.is_received,
+        ri.received_at
+      FROM requirements r
+      JOIN purchase_areas pa ON pa.id = r.purchase_area_id
+      JOIN requirement_items ri ON ri.requirement_id = r.id
+      LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
+      WHERE r.user_id=?
+        AND r.week_start=?
+        AND r.status='submitted'
+      ORDER BY r.required_date ASC, pa.name ASC, ri.id ASC
+    ");
+    $st->execute([$userId, $weekStart]);
+    return $st->fetchAll();
+  }
+
+  public static function setReceivedByWorker(int $itemId, int $userId, int $isReceived): ?string
+  {
+    self::ensureSchema();
+    $receivedAt = $isReceived === 1 ? date('Y-m-d H:i:s') : null;
+    $st = Database::conn()->prepare("
+      UPDATE requirement_items ri
+      JOIN requirements r ON r.id = ri.requirement_id
+      SET ri.is_received=?, ri.received_at=?
+      WHERE ri.id=?
+        AND r.user_id=?
+        AND r.status='submitted'
+    ");
+    $st->execute([$isReceived, $receivedAt, $itemId, $userId]);
+    if ($st->rowCount() === 0) {
+      $exists = Database::conn()->prepare("
+        SELECT COUNT(*)
+        FROM requirement_items ri
+        JOIN requirements r ON r.id=ri.requirement_id
+        WHERE ri.id=? AND r.user_id=? AND r.status='submitted'
+      ");
+      $exists->execute([$itemId, $userId]);
+      if ((int)$exists->fetchColumn() === 0) {
+        throw new RuntimeException('El producto no pertenece a un requerimiento enviado del trabajador.');
+      }
+    }
+    return $receivedAt;
   }
 
   public static function setPurchased(int $itemId, int $isPurchased): ?string

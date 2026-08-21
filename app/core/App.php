@@ -71,6 +71,7 @@ class App {
       '/worker/inventory' => ['WorkerController', 'inventory'],
       '/worker/beverages' => ['AdminController', 'beverages'],
       '/worker/requirements' => ['WorkerController', 'requirements'],
+      '/worker/requirements/validate' => ['WorkerController', 'validateRequirements'],
       '/worker/purchase-frequency' => ['WorkerController', 'purchaseFrequency'],
       '/worker/activities' => ['WorkerController', 'activities'],
       '/worker/tasks' => ['WorkerController', 'tasks'],

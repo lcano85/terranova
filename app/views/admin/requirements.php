@@ -112,8 +112,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
 
     <div class="modal fade" id="createRequirementModal" tabindex="-1" aria-labelledby="createRequirementModalLabel" aria-hidden="true">
       <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-          <form method="POST">
+        <form method="POST" class="modal-content">
             <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
             <input type="hidden" name="action" value="create_requirement">
 
@@ -188,8 +187,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
               <button class="btn btn-primary">Registrar</button>
             </div>
-          </form>
-        </div>
+        </form>
       </div>
     </div>
 
@@ -295,7 +293,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                 <div class="d-flex flex-column gap-2">
                   <?php foreach ($area['items'] as $item): ?>
                     <div class="border rounded px-3 py-2" data-requirement-item data-subtotal="<?= $item['subtotal'] !== null ? Helpers::e(number_format((float)$item['subtotal'], 2, '.', '')) : '' ?>">
-                      <div class="d-flex align-items-center gap-2">
+                      <div class="d-flex flex-wrap align-items-center gap-2">
                         <form method="POST" action="<?= Helpers::e(BASE_URL . '/admin/requirements') ?>" class="js-requirement-toggle-form form-check d-flex align-items-center gap-2 flex-grow-1 mb-0">
                           <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
                           <input type="hidden" name="action" value="toggle_item">
@@ -347,6 +345,27 @@ $unitMeasuresForJs = array_map(static function ($unit) {
                             <button class="btn btn-sm btn-outline-primary" type="submit">Guardar</button>
                           </noscript>
                         </form>
+
+                        <?php if (($worker['user_role'] ?? '') === 'worker'): ?>
+                          <div class="border rounded px-2 py-1 <?= (int)($item['is_received'] ?? 0) === 1 ? 'border-success bg-success-subtle' : 'bg-light' ?>">
+                            <div class="form-check mb-0">
+                              <input
+                                class="form-check-input"
+                                type="checkbox"
+                                aria-label="Confirmación de recepción del trabajador"
+                                <?= (int)($item['is_received'] ?? 0) === 1 ? 'checked' : '' ?>
+                                disabled>
+                              <span class="form-check-label small fw-semibold text-nowrap">
+                                <?= (int)($item['is_received'] ?? 0) === 1 ? 'Sí llegó' : 'No confirmado' ?>
+                              </span>
+                            </div>
+                            <?php if ((int)($item['is_received'] ?? 0) === 1 && !empty($item['received_at'])): ?>
+                              <div class="small text-success text-nowrap">
+                                <?= Helpers::e(date('d/m/Y H:i', strtotime($item['received_at']))) ?>
+                              </div>
+                            <?php endif; ?>
+                          </div>
+                        <?php endif; ?>
 
                         <form method="POST" class="mb-0" onsubmit="return confirm('Eliminar este item del requerimiento?');">
                           <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
