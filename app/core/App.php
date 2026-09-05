@@ -40,6 +40,7 @@ class App {
       '/admin/incentives' => ['AdminController', 'incentives'],
       '/admin/job-functions' => ['AdminController', 'jobFunctions'],
       '/admin/inventory' => ['AdminController', 'inventory'],
+      '/admin/inventory/image' => ['AdminController', 'inventoryImage'],
       '/admin/inventory/history-seen' => ['AdminController', 'inventoryHistorySeen'],
       '/admin/beverages' => ['AdminController', 'beverages'],
       '/admin/products' => ['AdminController', 'products'],

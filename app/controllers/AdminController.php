@@ -17,6 +17,7 @@ require_once __DIR__ . '/../models/Task.php';
 require_once __DIR__ . '/../models/WorkerPayRate.php';
 require_once __DIR__ . '/../models/Promotion.php';
 require_once __DIR__ . '/../models/InventoryItem.php';
+require_once __DIR__ . '/../core/InventoryImage.php';
 require_once __DIR__ . '/../models/BeverageControl.php';
 require_once __DIR__ . '/../models/ProductCategory.php';
 require_once __DIR__ . '/../models/Product.php';
@@ -1409,7 +1410,7 @@ class AdminController extends Controller
         $userId = (int)($_POST['user_id'] ?? 0);
         $type = (string)($_POST['mark_type'] ?? '');
         $markedAtRaw = trim((string)($_POST['marked_at'] ?? ''));
-        $markedAt = DateTime::createFromFormat('Y-m-d\TH:i', $markedAtRaw);
+        $markedAt = DateTime::createFromFormat('!Y-m-d\TH:i', $markedAtRaw);
         if (!$markedAt) {
           $markedAt = DateTime::createFromFormat('Y-m-d H:i:s', $markedAtRaw);
         }
@@ -1464,7 +1465,8 @@ class AdminController extends Controller
             $ip !== '' ? $ip : null,
             $lat,
             $lng,
-            $ua !== '' ? $ua : null
+            $ua !== '' ? $ua : null,
+            (int)(Auth::user()['id'] ?? 0)
           );
           $msg = ['type' => 'success', 'text' => 'Asistencia actualizada'];
         }
@@ -1598,6 +1600,9 @@ class AdminController extends Controller
       Csrf::check();
       $action = $_POST['action'] ?? '';
 
+      $uploadedImage = null;
+      $previousImage = null;
+      $pdo = Database::conn();
       try {
         $userId = (int)($_POST['user_id'] ?? 0);
         $itemAreaId = (int)($_POST['area_id'] ?? 0);
@@ -1627,6 +1632,17 @@ class AdminController extends Controller
           }
         }
 
+        InventoryItem::ensureSchema();
+        $pdo->beginTransaction();
+        if (in_array($action, ['update', 'delete'], true)) {
+          $st = $pdo->prepare('SELECT image_name FROM inventory_items WHERE id=? FOR UPDATE');
+          $st->execute([(int)($_POST['id'] ?? 0)]);
+          $current = $st->fetch();
+          if (!$current) throw new RuntimeException('El item de inventario no existe.');
+          $previousImage = $current['image_name'];
+        }
+        if (in_array($action, ['create', 'update'], true)) $uploadedImage = InventoryImage::upload();
+
         if ($action === 'create') {
           InventoryItem::create(
             $userId,
@@ -1636,7 +1652,8 @@ class AdminController extends Controller
             $unit,
             $notes !== '' ? $notes : null,
             (int)(Auth::user()['id'] ?? 0),
-            'admin'
+            'admin',
+            $uploadedImage
           );
           $msg = ['type' => 'success', 'text' => 'Item de inventario registrado'];
         }
@@ -1652,7 +1669,8 @@ class AdminController extends Controller
             $notes !== '' ? $notes : null,
             $isActive,
             (int)(Auth::user()['id'] ?? 0),
-            'admin'
+            'admin',
+            $uploadedImage
           );
           $msg = ['type' => 'success', 'text' => 'Item de inventario actualizado'];
         }
@@ -1661,7 +1679,13 @@ class AdminController extends Controller
           InventoryItem::deleteByAdmin((int)($_POST['id'] ?? 0), (int)(Auth::user()['id'] ?? 0));
           $msg = ['type' => 'warning', 'text' => 'Item de inventario eliminado'];
         }
+        $pdo->commit();
+        if ($uploadedImage || $action === 'delete') InventoryImage::remove($previousImage);
       } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+          $pdo->rollBack();
+          InventoryImage::remove($uploadedImage);
+        }
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
     }
@@ -1680,6 +1704,24 @@ class AdminController extends Controller
     $this->view('admin/inventory', compact('areas', 'workers', 'rows', 'grouped', 'inventoryHistory', 'unseenInventoryUpdates', 'areaId', 'status', 'msg'));
   }
 
+  public function inventoryImage(): void
+  {
+    Auth::requireRole('admin');
+    $st = Database::conn()->prepare('SELECT image_name FROM inventory_items WHERE id=?');
+    $st->execute([(int)($_GET['id'] ?? 0)]);
+    $name = $st->fetchColumn();
+    if (!$name || !is_file(InventoryImage::path($name))) {
+      http_response_code(404);
+      exit('Imagen no encontrada.');
+    }
+    $path = InventoryImage::path($name);
+    $mime = ['jpg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'][pathinfo($path, PATHINFO_EXTENSION)];
+    header('Content-Type: ' . $mime);
+    header('X-Content-Type-Options: nosniff');
+    header('Cache-Control: private, no-store');
+    header('Content-Length: ' . filesize($path));
+    readfile($path);
+  }
   public function inventoryHistorySeen(): void
   {
     Auth::requireRole('admin');

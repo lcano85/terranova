@@ -118,6 +118,7 @@ function inventoryHistoryDetail(array $history): string {
                   <th>Trabajador</th>
                   <th>Documento</th>
                   <th>Item</th>
+                  <th>Imagen</th>
                   <th>Cantidad</th>
                   <th>Unidad</th>
                   <th>Estado</th>
@@ -133,6 +134,13 @@ function inventoryHistoryDetail(array $history): string {
                     <td><?= Helpers::e($item['first_name'] . ' ' . $item['last_name']) ?></td>
                     <td><?= Helpers::e($item['document_number']) ?></td>
                     <td><?= Helpers::e($item['name']) ?></td>
+                    <td>
+                      <?php if (!empty($item['image_name'])): ?>
+                        <button type="button" class="btn p-0 border rounded" data-bs-toggle="modal" data-bs-target="#modalInventoryImage" data-image-src="<?= Helpers::e(BASE_URL . '/admin/inventory/image?id=' . (int)$item['id']) ?>" data-image-title="<?= Helpers::e($item['name']) ?>" aria-label="<?= Helpers::e('Ver imagen de ' . $item['name']) ?>">
+                          <img src="<?= Helpers::e(BASE_URL . '/admin/inventory/image?id=' . (int)$item['id']) ?>" alt="<?= Helpers::e($item['name']) ?>" loading="lazy" style="width:72px;height:60px;object-fit:contain" class="rounded">
+                        </button>
+                      <?php else: ?><span class="text-muted small">Sin imagen</span><?php endif; ?>
+                    </td>
                     <td><?= (int)$item['quantity'] ?></td>
                     <td><?= Helpers::e($item['unit']) ?></td>
                     <td>
@@ -174,7 +182,7 @@ function inventoryHistoryDetail(array $history): string {
             <div class="modal fade" id="modalEditInventory<?= (int)$item['id'] ?>" tabindex="-1">
               <div class="modal-dialog">
                 <div class="modal-content">
-                  <form method="POST">
+                  <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
@@ -211,6 +219,14 @@ function inventoryHistoryDetail(array $history): string {
                         <div class="col-md-12">
                           <label class="form-label">Item</label>
                           <input class="form-control" name="name" value="<?= Helpers::e($item['name']) ?>" required>
+                        </div>
+                        <div class="col-md-12">
+                          <label class="form-label" for="inventoryImage<?= (int)$item['id'] ?>">Imagen</label>
+                          <input type="file" class="form-control" id="inventoryImage<?= (int)$item['id'] ?>" name="image" accept="image/jpeg,image/png,image/webp">
+                          <div class="form-text">JPG, PNG o WebP. Máximo 5 MB. Deja el campo vacío para conservar la imagen actual.</div>
+                          <?php if (!empty($item['image_name'])): ?>
+                            <img src="<?= Helpers::e(BASE_URL . '/admin/inventory/image?id=' . (int)$item['id']) ?>" alt="Imagen actual" class="img-thumbnail mt-2" style="max-height:120px">
+                          <?php endif; ?>
                         </div>
                         <div class="col-md-6">
                           <label class="form-label">Cantidad</label>
@@ -299,7 +315,7 @@ function inventoryHistoryDetail(array $history): string {
             <div class="modal fade" id="modalDeleteInventory<?= (int)$item['id'] ?>" tabindex="-1">
               <div class="modal-dialog">
                 <div class="modal-content">
-                  <form method="POST">
+                  <form method="POST" enctype="multipart/form-data">
                     <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="id" value="<?= (int)$item['id'] ?>">
@@ -335,7 +351,7 @@ function inventoryHistoryDetail(array $history): string {
     <div class="modal fade" id="modalCreateInventory" tabindex="-1">
       <div class="modal-dialog">
         <div class="modal-content">
-          <form method="POST">
+          <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
             <input type="hidden" name="action" value="create">
 
@@ -369,6 +385,11 @@ function inventoryHistoryDetail(array $history): string {
                 <div class="col-md-12">
                   <label class="form-label">Item</label>
                   <input class="form-control" name="name" placeholder="Ej: Servilleteros" required>
+                </div>
+                <div class="col-md-12">
+                  <label class="form-label" for="inventoryImageNew">Imagen</label>
+                  <input type="file" class="form-control" id="inventoryImageNew" name="image" accept="image/jpeg,image/png,image/webp">
+                  <div class="form-text">Opcional. JPG, PNG o WebP. Máximo 5 MB.</div>
                 </div>
                 <div class="col-md-6">
                   <label class="form-label">Cantidad</label>
@@ -441,5 +462,32 @@ function inventoryHistoryDetail(array $history): string {
     }, { once: true });
   });
 })();
+</script>
+<div class="modal fade" id="modalInventoryImage" tabindex="-1" aria-labelledby="inventoryImageTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="inventoryImageTitle">Imagen del ítem</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img id="inventoryImagePreview" alt="Imagen del ítem" class="img-fluid" style="max-height:70vh;object-fit:contain">
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const inventoryImageModal = document.getElementById('modalInventoryImage');
+inventoryImageModal.addEventListener('show.bs.modal', (event) => {
+  const button = event.relatedTarget;
+  if (!button) return;
+  const preview = document.getElementById('inventoryImagePreview');
+  preview.src = button.dataset.imageSrc;
+  preview.alt = button.dataset.imageTitle;
+  document.getElementById('inventoryImageTitle').textContent = button.dataset.imageTitle;
+});
+inventoryImageModal.addEventListener('hidden.bs.modal', () => {
+  document.getElementById('inventoryImagePreview').removeAttribute('src');
+});
 </script>
 <?php require __DIR__ . '/../layouts/footer.php'; ?>
