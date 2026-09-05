@@ -14,3 +14,4 @@ $RECYCLE.BIN/
 # Credenciales y configuracion local
 app/config/database.local.php
 app/config/mail.local.php
+/app/storage/rhe/

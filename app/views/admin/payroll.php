@@ -95,8 +95,9 @@ function payrollTypeLabel(string $type): string {
             <label class="form-label">Horas por dia</label>
             <input type="number" step="0.01" min="0" class="form-control" name="hours_per_day" value="<?= Helpers::e((string)$hoursPerDay) ?>" placeholder="Auto">
           </div>
-          <div class="col-lg-2 col-md-6 d-grid">
-            <button class="btn btn-outline-primary">Calcular</button>
+          <div class="col-lg-3 col-md-6 d-flex gap-2">
+            <button type="submit" class="btn btn-outline-primary flex-grow-1">Calcular</button>
+            <a class="btn btn-outline-secondary" href="<?= Helpers::e(BASE_URL . '/admin/payroll') ?>">Limpiar</a>
           </div>
         </form>
       </div>

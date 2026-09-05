@@ -35,6 +35,8 @@ class App {
       '/admin/promotions' => ['AdminController', 'promotions'],
       '/admin/attendance' => ['AdminController', 'attendance'],
       '/admin/payroll' => ['AdminController', 'payroll'],
+      '/admin/rhe-payments' => ['RhePaymentController', 'index'],
+      '/admin/rhe-payments/image' => ['RhePaymentController', 'image'],
       '/admin/incentives' => ['AdminController', 'incentives'],
       '/admin/job-functions' => ['AdminController', 'jobFunctions'],
       '/admin/inventory' => ['AdminController', 'inventory'],
