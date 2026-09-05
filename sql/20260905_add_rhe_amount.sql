@@ -1,0 +1,1 @@
+ALTER TABLE rhe_payments ADD COLUMN amount DECIMAL(12,2) NULL AFTER period_month;

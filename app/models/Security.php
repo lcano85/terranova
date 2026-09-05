@@ -250,6 +250,7 @@ class Security
     $add('admin.areas', 'Áreas', '/admin/areas', 23, 'admin', 'admin.personal');
     $add('admin.attendance', 'Asistencia', '/admin/attendance', 24, 'admin', 'admin.personal');
     $add('admin.payroll', 'Pagos', '/admin/payroll', 25, 'admin', 'admin.personal');
+    $add('admin.rhe_payments', 'Pago RHE', '/admin/rhe-payments', 25, 'admin', 'admin.personal');
     $add('admin.incentives', 'Incentivos y bonos', '/admin/incentives', 26, 'admin', 'admin.personal');
     $add('admin.job_functions', 'Funciones por rol', '/admin/job-functions', 27, 'admin', 'admin.personal');
 

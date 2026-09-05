@@ -33,8 +33,9 @@ $attendancePaginationMeta = $attendancePagination['meta'];
           <div class="col-md-3">
             <input type="date" class="form-control" name="to" value="<?= Helpers::e($to ?? '') ?>">
           </div>
-          <div class="col-md-3 d-grid">
-            <button class="btn btn-outline-primary">Filtrar</button>
+          <div class="col-md-3 d-flex gap-2">
+            <button type="submit" class="btn btn-outline-primary flex-grow-1">Filtrar</button>
+            <a class="btn btn-outline-secondary" href="<?= Helpers::e(BASE_URL . '/admin/attendance') ?>">Limpiar</a>
           </div>
         </form>
       </div>
