@@ -724,7 +724,8 @@ class AdminController extends Controller
     $allWeeks = ($_GET['week_start'] ?? '') === 'all';
     $purchaseStatus = (string)($_GET['purchase_status'] ?? 'all');
     if (!in_array($purchaseStatus, ['all', 'pending', 'purchased'], true)) $purchaseStatus = 'all';
-    $rows = Requirement::forAdminWeek($allWeeks ? null : $week['from'], $purchaseStatus === 'all' ? null : ($purchaseStatus === 'purchased' ? 1 : 0));
+    $requirementProductSearch = trim((string)($_GET['product_search'] ?? ''));
+    $rows = Requirement::forAdminWeek($allWeeks ? null : $week['from'], $purchaseStatus === 'all' ? null : ($purchaseStatus === 'purchased' ? 1 : 0), $requirementProductSearch);
       $weekOptions = Requirement::weekOptions(8);
       $workers = User::allRequirementUsers();
       $supplies = Supply::activeForRequirements();
@@ -796,7 +797,7 @@ class AdminController extends Controller
       'defaultRequirementDate',
       'weeklyEstimatedTotal',
       'weeklyPurchasedTotal',
-      'allWeeks', 'purchaseStatus',
+      'allWeeks', 'purchaseStatus', 'requirementProductSearch',
       'weeklyUnpricedItems'
     ));
   }

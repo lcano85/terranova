@@ -43,7 +43,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
     <div class="card shadow-sm mb-3">
       <div class="card-body">
         <form method="GET" class="row g-2">
-          <div class="col-md-4">
+          <div class="col-lg-3 col-md-6">
             <label class="form-label">Semana</label>
             <select class="form-select" name="week_start" onchange="this.form.submit()">
               <option value="all" <?= $allWeeks ? 'selected' : '' ?>>Todas las semanas</option>
@@ -54,7 +54,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
               <?php endforeach; ?>
             </select>
           </div>
-          <div class="col-md-4">
+          <div class="col-lg-3 col-md-6">
             <label class="form-label" for="purchaseStatus">Estado de compra</label>
             <select class="form-select" id="purchaseStatus" name="purchase_status" onchange="this.form.submit()">
               <option value="all" <?= $purchaseStatus === 'all' ? 'selected' : '' ?>>Todos</option>
@@ -62,8 +62,12 @@ $unitMeasuresForJs = array_map(static function ($unit) {
               <option value="purchased" <?= $purchaseStatus === 'purchased' ? 'selected' : '' ?>>Comprados</option>
             </select>
           </div>
-          <div class="col-md-4 d-grid">
-            <label class="form-label">&nbsp;</label>
+          <div class="col-lg-3 col-md-6">
+            <label class="form-label" for="requirementProductSearch">Buscar producto</label>
+            <input type="search" class="form-control" id="requirementProductSearch" name="product_search" value="<?= Helpers::e($requirementProductSearch) ?>" placeholder="Nombre del producto">
+          </div>
+          <div class="col-lg-3 col-md-6 d-flex align-items-end gap-2">
+            <button type="submit" class="btn btn-outline-primary">Buscar</button>
             <a class="btn btn-outline-secondary" href="/admin/requirements">Limpiar filtros</a>
           </div>
         </form>

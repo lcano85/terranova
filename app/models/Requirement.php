@@ -229,13 +229,18 @@ class Requirement
     return $st->fetchAll();
   }
 
-  public static function forAdminWeek(?string $weekStart, ?int $purchased = null): array
+  public static function forAdminWeek(?string $weekStart, ?int $purchased = null, string $productSearch = ''): array
   {
     self::ensureSchema();
     $conditions = ["u.role IN ('admin', 'worker')"];
     $params = [];
     if ($weekStart !== null) { $conditions[] = 'r.week_start=?'; $params[] = $weekStart; }
     if ($purchased !== null) { $conditions[] = 'ri.is_purchased=?'; $params[] = $purchased; }
+    $productSearch = trim($productSearch);
+    if ($productSearch !== '') {
+      $conditions[] = 'LOCATE(?, ri.item_name) > 0';
+      $params[] = $productSearch;
+    }
     $where = implode(' AND ', $conditions);
     $st = Database::conn()->prepare("
       SELECT
