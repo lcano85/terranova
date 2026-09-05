@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../core/Pagination.php';
 $attendancePagination = Pagination::paginateArray($rows, 'attendance_page', 'attendance_per_page');
 $rows = $attendancePagination['rows'];
 $attendancePaginationMeta = $attendancePagination['meta'];
+$attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
 ?>
 <div class="app-shell d-flex">
   <?php require __DIR__ . '/../layouts/sidebar_admin.php'; ?>
@@ -54,7 +55,7 @@ $attendancePaginationMeta = $attendancePagination['meta'];
               <th>Fecha/Hora</th>
               <th>Tardanza</th>
               <th>IP</th>
-              <th style="width: 180px;">Acciones</th>
+              <th style="width: 260px;">Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -71,11 +72,12 @@ $attendancePaginationMeta = $attendancePagination['meta'];
                 <td><?= Helpers::e(Helpers::formatDateTime($r['marked_at'])) ?></td>
                 <td><?= (int)$r['minutes_late'] ?> min</td>
                 <td><?= Helpers::e($r['ip_address'] ?? '-') ?></td>
-                <td class="d-flex gap-2">
+                <td class="d-flex flex-wrap gap-2">
                   <button class="btn btn-sm btn-outline-secondary"
                           data-bs-toggle="modal"
                           data-bs-target="#modalEditAttendance<?= (int)$r['id'] ?>">Editar</button>
 
+                  <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#modalAttendanceHistory<?= (int)$r['id'] ?>">Historial</button>
                   <form method="POST" onsubmit="return confirm('Eliminar asistencia?');">
                     <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
                     <input type="hidden" name="action" value="delete">
@@ -222,4 +224,55 @@ $attendancePaginationMeta = $attendancePagination['meta'];
 
   </div>
 </div>
+<?php
+$historyLabels = ['user_id' => 'Trabajador', 'mark_type' => 'Tipo', 'marked_at' => 'Fecha / Hora', 'minutes_late' => 'Tardanza (min)', 'latitude' => 'Latitud', 'longitude' => 'Longitud', 'ip_address' => 'IP', 'user_agent' => 'User agent'];
+$historyValue = static function (string $field, $value): string {
+  if ($value === null || $value === '') return 'Sin dato';
+  if ($field === 'mark_type') return $value === 'in' ? 'Entrada' : 'Salida';
+  if ($field === 'marked_at') return date('d/m/Y H:i:s', strtotime($value));
+  return (string)$value;
+};
+foreach ($rows as $attendanceRow):
+?>
+<div class="modal fade" id="modalAttendanceHistory<?= (int)$attendanceRow['id'] ?>" tabindex="-1" aria-labelledby="attendanceHistoryTitle<?= (int)$attendanceRow['id'] ?>" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title" id="attendanceHistoryTitle<?= (int)$attendanceRow['id'] ?>">Historial de asistencia #<?= (int)$attendanceRow['id'] ?></h5>
+          <div class="text-muted small"><?= Helpers::e($attendanceRow['first_name'] . ' ' . $attendanceRow['last_name']) ?></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <?php $edits = $attendanceHistory[(int)$attendanceRow['id']] ?? []; ?>
+        <?php if (!$edits): ?>
+          <p class="text-muted mb-0">Sin ediciones registradas. El historial guarda los cambios realizados a partir de la activación de esta función.</p>
+        <?php endif; ?>
+        <?php foreach ($edits as $edit): ?>
+          <div class="border rounded p-3 mb-3">
+            <div class="fw-semibold"><?= Helpers::e($edit['actor_name']) ?></div>
+            <div class="text-muted small mb-2"><?= Helpers::e(date('d/m/Y H:i:s', strtotime($edit['created_at']))) ?></div>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0" style="overflow-wrap:anywhere">
+                <thead><tr><th>Campo</th><th>Antes</th><th>Después</th></tr></thead>
+                <tbody>
+                  <?php foreach (json_decode($edit['changes_json'], true) ?? [] as $field => $change): ?>
+                    <tr>
+                      <td><?= Helpers::e($historyLabels[$field] ?? $field) ?></td>
+                      <td><?= Helpers::e($historyValue($field, $change['before'])) ?></td>
+                      <td><?= Helpers::e($historyValue($field, $change['after'])) ?></td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div>
+    </div>
+  </div>
+</div>
+<?php endforeach; ?>
 <?php require __DIR__ . '/../layouts/footer.php'; ?>

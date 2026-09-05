@@ -98,14 +98,15 @@ class InventoryItem
     string $unit,
     ?string $notes,
     ?int $actorUserId = null,
-    ?string $actorRole = null
+    ?string $actorRole = null,
+    ?string $imageName = null
   ): int {
     self::ensureSchema();
     $st = Database::conn()->prepare("
-      INSERT INTO inventory_items (user_id, area_id, name, quantity, unit, notes, is_active)
-      VALUES (?,?,?,?,?,?,1)
+      INSERT INTO inventory_items (user_id, area_id, name, quantity, unit, notes, is_active, image_name)
+      VALUES (?,?,?,?,?,?,1,?)
     ");
-    $st->execute([$userId, $areaId, $name, $quantity, $unit, $notes]);
+    $st->execute([$userId, $areaId, $name, $quantity, $unit, $notes, $imageName]);
     $id = (int)Database::conn()->lastInsertId();
     self::logChange($id, 'create', $actorUserId, $actorRole, null, self::findRaw($id));
     return $id;
@@ -144,16 +145,17 @@ class InventoryItem
     ?string $notes,
     int $isActive,
     ?int $actorUserId = null,
-    ?string $actorRole = null
+    ?string $actorRole = null,
+    ?string $imageName = null
   ): void {
     self::ensureSchema();
     $before = self::findRaw($id);
     $st = Database::conn()->prepare("
       UPDATE inventory_items
-      SET user_id=?, area_id=?, name=?, quantity=?, unit=?, notes=?, is_active=?
+      SET user_id=?, area_id=?, name=?, quantity=?, unit=?, notes=?, is_active=?, image_name=COALESCE(?, image_name)
       WHERE id=?
     ");
-    $st->execute([$userId, $areaId, $name, $quantity, $unit, $notes, $isActive, $id]);
+    $st->execute([$userId, $areaId, $name, $quantity, $unit, $notes, $isActive, $imageName, $id]);
     if ($before && $st->rowCount() > 0) {
       self::logChange($id, 'update', $actorUserId, $actorRole, $before, self::findRaw($id));
     }
@@ -316,6 +318,7 @@ class InventoryItem
       'quantity' => (float)($row['quantity'] ?? 0),
       'unit' => (string)($row['unit'] ?? ''),
       'notes' => $row['notes'] ?? null,
+      'image_name' => $row['image_name'] ?? null,
       'is_active' => (int)($row['is_active'] ?? 0),
     ];
   }

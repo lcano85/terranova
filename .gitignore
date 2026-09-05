@@ -15,3 +15,4 @@ $RECYCLE.BIN/
 app/config/database.local.php
 app/config/mail.local.php
 /app/storage/rhe/
+/app/storage/inventory/

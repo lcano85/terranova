@@ -207,25 +207,58 @@ class Attendance
   }
 
   public static function update(
-    int $id,
-    int $userId,
-    string $type,
-    string $markedAt,
-    int $late,
-    ?string $ip,
-    ?float $lat,
-    ?float $lng,
-    ?string $ua
+    int $id, int $userId, string $type, string $markedAt, int $late,
+    ?string $ip, ?float $lat, ?float $lng, ?string $ua,
+    ?int $actorUserId = null
   ): void {
-    $st = Database::conn()->prepare("
-      UPDATE attendance
-      SET user_id=?, mark_type=?, marked_at=?, minutes_late=?, latitude=?, longitude=?, ip_address=?, user_agent=?
-      WHERE id=?
-    ");
-
-    $st->execute([$userId, $type, $markedAt, $late, $lat, $lng, $ip, $ua, $id]);
+    $pdo = Database::conn();
+    $ownsTransaction = !$pdo->inTransaction();
+    if ($ownsTransaction) $pdo->beginTransaction();
+    try {
+      $lock = $pdo->prepare('SELECT id FROM attendance WHERE id=? FOR UPDATE');
+      $lock->execute([$id]);
+      if (!$lock->fetchColumn()) throw new RuntimeException('La asistencia no existe.');
+      $before = self::find($id);
+      $pdo->prepare('UPDATE attendance SET user_id=?, mark_type=?, marked_at=?, minutes_late=?, latitude=?, longitude=?, ip_address=?, user_agent=? WHERE id=?')
+        ->execute([$userId, $type, $markedAt, $late, $lat, $lng, $ip, $ua, $id]);
+      $after = self::find($id);
+      $changes = [];
+      foreach (['user_id', 'mark_type', 'marked_at', 'minutes_late', 'latitude', 'longitude', 'ip_address', 'user_agent'] as $field) {
+        if (($before[$field] ?? null) === ($after[$field] ?? null)) continue;
+        $old = $before[$field];
+        $new = $after[$field];
+        if ($field === 'user_id') {
+          $old = $before['document_number'] . ' - ' . $before['first_name'] . ' ' . $before['last_name'];
+          $new = $after['document_number'] . ' - ' . $after['first_name'] . ' ' . $after['last_name'];
+        }
+        $changes[$field] = ['before' => $old, 'after' => $new];
+      }
+      if ($changes) {
+        $actor = $pdo->prepare('SELECT first_name, last_name FROM users WHERE id=?');
+        $actor->execute([$actorUserId]);
+        $user = $actor->fetch();
+        $actorName = $user ? trim($user['first_name'] . ' ' . $user['last_name']) : 'Sistema';
+        $pdo->prepare('INSERT INTO attendance_history (attendance_id, actor_user_id, actor_name, changes_json) VALUES (?,?,?,?)')
+          ->execute([$id, $actorUserId, $actorName, json_encode($changes, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+      }
+      if ($ownsTransaction) $pdo->commit();
+    } catch (Throwable $e) {
+      if ($ownsTransaction && $pdo->inTransaction()) $pdo->rollBack();
+      throw $e;
+    }
   }
 
+  public static function historyForItems(array $ids): array
+  {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if (!$ids) return [];
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $st = Database::conn()->prepare("SELECT * FROM attendance_history WHERE attendance_id IN ($placeholders) ORDER BY id DESC");
+    $st->execute($ids);
+    $grouped = [];
+    foreach ($st->fetchAll() as $row) $grouped[(int)$row['attendance_id']][] = $row;
+    return $grouped;
+  }
   public static function delete(int $id): void
   {
     $st = Database::conn()->prepare("DELETE FROM attendance WHERE id=?");
