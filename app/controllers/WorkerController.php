@@ -386,6 +386,26 @@ class WorkerController extends Controller {
 
   public function requirements(): void {
     Auth::requireRole('worker');
+    if (($_GET['tab'] ?? '') === 'purchases') {
+      if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+        http_response_code(405); header('Allow: GET'); return;
+      }
+      $search = trim((string)($_GET['product_search'] ?? ''));
+      $status = (string)($_GET['status'] ?? 'all');
+      if (!in_array($status, ['all','pending','purchased'], true)) $status = 'all';
+      $from = trim((string)($_GET['from'] ?? ''));
+      $to = trim((string)($_GET['to'] ?? date('Y-m-d')));
+      $error = null;
+      foreach ([$from, $to] as $date) {
+        if ($date === '') continue;
+        $parsed = DateTime::createFromFormat('!Y-m-d', $date);
+        if (!$parsed || $parsed->format('Y-m-d') !== $date) $error = 'Ingresa fechas válidas.';
+      }
+      if (!$error && $from !== '' && $to !== '' && $from > $to) $error = 'La fecha desde no puede ser posterior a la fecha hasta.';
+      $pagination = $error ? ['rows'=>[], 'meta'=>['total'=>0]] : Requirement::workerPurchaseOverview($search, $status, $from, $to);
+      $this->view('worker/purchase_overview', compact('search','status','from','to','error','pagination'));
+      return;
+    }
 
     $base = Auth::user();
     $user = User::findWithDetails((int)$base['id']) ?: $base;

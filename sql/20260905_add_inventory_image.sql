@@ -1,0 +1,1 @@
+ALTER TABLE inventory_items ADD COLUMN image_name VARCHAR(80) NULL AFTER name;

@@ -26,6 +26,10 @@ $unitMeasuresForJs = array_map(static function ($unit) {
   <?php require __DIR__ . '/../layouts/sidebar_worker.php'; ?>
 
   <div class="content p-4">
+    <nav class="nav nav-tabs mb-3" aria-label="Requerimientos">
+      <a class="nav-link active" aria-current="page" href="/worker/requirements">Mis requerimientos</a>
+      <a class="nav-link" href="/worker/requirements?tab=purchases">Estado general de compras</a>
+    </nav>
     <div class="page-toolbar mb-3">
       <div>
         <h3 class="mb-0">Mis requerimientos</h3>

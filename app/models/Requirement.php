@@ -229,6 +229,26 @@ class Requirement
     return $st->fetchAll();
   }
 
+  public static function workerPurchaseOverview(string $search, string $status, string $from, string $to): array
+  {
+    self::ensureSchema();
+    $where = ["r.status='submitted'", 'ri.created_at <= ?'];
+    $params = [date('Y-m-d H:i:s')];
+    if ($search !== '') { $where[] = 'LOCATE(?, ri.item_name)>0'; $params[] = $search; }
+    if ($status !== 'all') { $where[] = 'ri.is_purchased=?'; $params[] = $status === 'purchased' ? 1 : 0; }
+    if ($from !== '') { $where[] = 'ri.created_at >= ?'; $params[] = $from . ' 00:00:00'; }
+    if ($to !== '') { $where[] = 'ri.created_at < DATE_ADD(?, INTERVAL 1 DAY)'; $params[] = $to; }
+    $sqlFrom = ' FROM requirement_items ri JOIN requirements r ON r.id=ri.requirement_id JOIN purchase_areas pa ON pa.id=r.purchase_area_id LEFT JOIN unit_measures um ON um.id=ri.unit_measure_id WHERE ' . implode(' AND ', $where);
+    $pdo = Database::conn();
+    $st = $pdo->prepare('SELECT COUNT(*)' . $sqlFrom); $st->execute($params); $total = (int)$st->fetchColumn();
+    $allowed = [10,20,50,100]; $perPage = (int)($_GET['per_page'] ?? 10);
+    if (!in_array($perPage, $allowed, true)) $perPage = 10;
+    $pages = max(1, (int)ceil($total / $perPage));
+    $page = max(1, min($pages, (int)($_GET['page'] ?? 1))); $offset = ($page-1)*$perPage;
+    $st = $pdo->prepare('SELECT ri.id, ri.item_name, ri.detail, ri.quantity, ri.created_at, ri.is_purchased, pa.name AS area_name, COALESCE(NULLIF(um.abbreviation,\'\'), um.name) AS unit_label' . $sqlFrom . " ORDER BY ri.created_at DESC, ri.id DESC LIMIT $perPage OFFSET $offset");
+    $st->execute($params);
+    return ['rows'=>$st->fetchAll(), 'meta'=>['page'=>$page,'per_page'=>$perPage,'total'=>$total,'total_pages'=>$pages,'page_param'=>'page','per_page_param'=>'per_page','allowed_per_page'=>$allowed]];
+  }
   public static function forAdminWeek(?string $weekStart, ?int $purchased = null, string $productSearch = ''): array
   {
     self::ensureSchema();
