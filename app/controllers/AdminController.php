@@ -616,7 +616,7 @@ class AdminController extends Controller
   {
     Auth::requireRole('admin');
     $msg = null;
-    $selectedWeekStart = Requirement::normalizeWeekStart($_GET['week_start'] ?? null);
+    $selectedWeekStart = Requirement::normalizeWeekStart(($_GET['week_start'] ?? '') === 'all' ? null : ($_GET['week_start'] ?? null));
     $expectsJson = $this->isJsonRequest();
 
     if (Helpers::isPost()) {
@@ -721,7 +721,10 @@ class AdminController extends Controller
     }
 
     $week = Requirement::weekRangeForDate($selectedWeekStart);
-    $rows = Requirement::forAdminWeek($week['from']);
+    $allWeeks = ($_GET['week_start'] ?? '') === 'all';
+    $purchaseStatus = (string)($_GET['purchase_status'] ?? 'all');
+    if (!in_array($purchaseStatus, ['all', 'pending', 'purchased'], true)) $purchaseStatus = 'all';
+    $rows = Requirement::forAdminWeek($allWeeks ? null : $week['from'], $purchaseStatus === 'all' ? null : ($purchaseStatus === 'purchased' ? 1 : 0));
       $weekOptions = Requirement::weekOptions(8);
       $workers = User::allRequirementUsers();
       $supplies = Supply::activeForRequirements();
@@ -793,6 +796,7 @@ class AdminController extends Controller
       'defaultRequirementDate',
       'weeklyEstimatedTotal',
       'weeklyPurchasedTotal',
+      'allWeeks', 'purchaseStatus',
       'weeklyUnpricedItems'
     ));
   }

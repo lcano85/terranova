@@ -32,7 +32,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       <div>
         <h3 class="mb-0">Requerimientos</h3>
         <div class="text-muted small">
-          Semana visible: <?= Helpers::e(date('d/m/Y', strtotime($week['from']))) ?> - <?= Helpers::e(date('d/m/Y', strtotime($week['to']))) ?>
+          <?php if ($allWeeks): ?>Todas las semanas<?php else: ?>Semana visible: <?= Helpers::e(date('d/m/Y', strtotime($week['from']))) ?> - <?= Helpers::e(date('d/m/Y', strtotime($week['to']))) ?><?php endif; ?>
         </div>
       </div>
       <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#createRequirementModal">
@@ -43,19 +43,28 @@ $unitMeasuresForJs = array_map(static function ($unit) {
     <div class="card shadow-sm mb-3">
       <div class="card-body">
         <form method="GET" class="row g-2">
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label">Semana</label>
             <select class="form-select" name="week_start" onchange="this.form.submit()">
+              <option value="all" <?= $allWeeks ? 'selected' : '' ?>>Todas las semanas</option>
               <?php foreach ($weekOptions as $option): ?>
-                <option value="<?= Helpers::e($option['from']) ?>" <?= $selectedWeekStart === $option['from'] ? 'selected' : '' ?>>
+                <option value="<?= Helpers::e($option['from']) ?>" <?= !$allWeeks && $selectedWeekStart === $option['from'] ? 'selected' : '' ?>>
                   <?= Helpers::e($option['label']) ?>
                 </option>
               <?php endforeach; ?>
             </select>
           </div>
-          <div class="col-md-3 d-grid">
+          <div class="col-md-4">
+            <label class="form-label" for="purchaseStatus">Estado de compra</label>
+            <select class="form-select" id="purchaseStatus" name="purchase_status" onchange="this.form.submit()">
+              <option value="all" <?= $purchaseStatus === 'all' ? 'selected' : '' ?>>Todos</option>
+              <option value="pending" <?= $purchaseStatus === 'pending' ? 'selected' : '' ?>>Pendientes</option>
+              <option value="purchased" <?= $purchaseStatus === 'purchased' ? 'selected' : '' ?>>Comprados</option>
+            </select>
+          </div>
+          <div class="col-md-4 d-grid">
             <label class="form-label">&nbsp;</label>
-            <a class="btn btn-outline-secondary" href="/admin/requirements">Semana actual</a>
+            <a class="btn btn-outline-secondary" href="/admin/requirements">Limpiar filtros</a>
           </div>
         </form>
       </div>
@@ -199,7 +208,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
       <div class="col-md-4">
         <div class="card shadow-sm h-100">
           <div class="card-body">
-            <div class="text-muted small">Total estimado de la semana</div>
+            <div class="text-muted small">Total estimado de los resultados</div>
             <div class="fs-4 fw-semibold" data-week-estimated-total>S/ <?= number_format((float)$weeklyEstimatedTotal, 2) ?></div>
           </div>
         </div>
@@ -227,7 +236,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
 
     <?php if (empty($grouped)): ?>
       <div class="card shadow-sm">
-        <div class="card-body text-muted">No hay requerimientos registrados para la semana seleccionada.</div>
+        <div class="card-body text-muted">No hay productos para los filtros seleccionados.</div>
       </div>
     <?php endif; ?>
 
@@ -660,6 +669,7 @@ $unitMeasuresForJs = array_map(static function ($unit) {
             throw new Error(result.message || 'No se pudo actualizar el item.');
           }
 
+          if (<?= json_encode($purchaseStatus !== 'all') ?>) { window.location.reload(); return; }
           const purchased = Number(result.item?.is_purchased || 0) === 1;
           checkbox.checked = purchased;
           statusBadge.textContent = result.item?.status_text || (purchased ? 'Comprado' : 'Pendiente');

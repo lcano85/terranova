@@ -229,9 +229,14 @@ class Requirement
     return $st->fetchAll();
   }
 
-  public static function forAdminWeek(string $weekStart): array
+  public static function forAdminWeek(?string $weekStart, ?int $purchased = null): array
   {
     self::ensureSchema();
+    $conditions = ["u.role IN ('admin', 'worker')"];
+    $params = [];
+    if ($weekStart !== null) { $conditions[] = 'r.week_start=?'; $params[] = $weekStart; }
+    if ($purchased !== null) { $conditions[] = 'ri.is_purchased=?'; $params[] = $purchased; }
+    $where = implode(' AND ', $conditions);
     $st = Database::conn()->prepare("
       SELECT
         r.id AS requirement_id,
@@ -269,11 +274,10 @@ class Requirement
       LEFT JOIN supplies s ON s.id = ri.supply_id
       LEFT JOIN unit_measures um ON um.id = ri.unit_measure_id
       LEFT JOIN unit_measures pum ON pum.id = COALESCE(ri.price_unit_measure_id, s.unit_measure_id)
-      WHERE r.week_start=?
-        AND u.role IN ('admin', 'worker')
+      WHERE $where
       ORDER BY u.first_name ASC, u.last_name ASC, pa.name ASC, r.required_date ASC, ri.id ASC
     ");
-    $st->execute([$weekStart]);
+    $st->execute($params);
     return $st->fetchAll();
   }
 
