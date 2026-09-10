@@ -12,7 +12,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
         <div class="alert alert-<?= Helpers::e($msg['type']) ?>"><?= Helpers::e($msg['text']) ?></div>
       <?php endif; ?>
 
-      <form method="POST">
+      <form method="POST" id="attendanceForm">
         <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
 
         <div class="mb-3">
@@ -39,7 +39,10 @@ require_once __DIR__ . '/../../core/Csrf.php';
         <input type="hidden" name="latitude" id="latitude">
         <input type="hidden" name="longitude" id="longitude">
 
-        <button class="btn btn-success w-100">Marcar</button>
+        <button type="submit" class="btn btn-success w-100" id="btnMark" aria-live="polite">
+          <span class="spinner-border spinner-border-sm me-2 d-none" id="markSpinner" aria-hidden="true"></span>
+          <span id="markButtonText">Marcar</span>
+        </button>
       </form>
 
       <div class="mt-3">
@@ -58,6 +61,49 @@ require_once __DIR__ . '/../../core/Csrf.php';
     </div>
   </div>
 </div>
+
+<?php if (($msg['type'] ?? '') === 'success'): ?>
+<div class="modal fade" id="modalMarkSuccess" tabindex="-1" aria-labelledby="modalMarkSuccessTitle" aria-describedby="modalMarkSuccessBody" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-success" id="modalMarkSuccessTitle">Marcación registrada</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body" id="modalMarkSuccessBody">
+        <p><?= Helpers::e($msg['text']) ?>.</p>
+        <p class="mb-1"><strong>Trabajador:</strong> <?= Helpers::e($msg['worker']) ?></p>
+        <p class="mb-0"><strong><?= Helpers::e($msg['document_label']) ?>:</strong> <?= Helpers::e($msg['document_number']) ?></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-success" data-bs-dismiss="modal">Aceptar</button>
+      </div>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
+
+<script>
+  (function() {
+    const form = document.getElementById('attendanceForm');
+    const button = document.getElementById('btnMark');
+    form.addEventListener('submit', function(event) {
+      if (button.disabled) {
+        event.preventDefault();
+        return;
+      }
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      document.getElementById('markSpinner').classList.remove('d-none');
+      document.getElementById('markButtonText').textContent = 'Cargando…';
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const modal = document.getElementById('modalMarkSuccess');
+      if (modal) bootstrap.Modal.getOrCreateInstance(modal).show();
+    });
+  })();
+</script>
 
 <style>
   #modalPromo .modal-dialog {

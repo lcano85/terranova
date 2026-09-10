@@ -80,7 +80,13 @@ class AttendanceController extends Controller
           $ua !== '' ? $ua : null
         );
 
-        $msg = ['type' => 'success', 'text' => 'Marcacion registrada correctamente'];
+        $msg = [
+          'type' => 'success',
+          'text' => 'Marcación de ' . ($type === 'in' ? 'entrada' : 'salida') . ' registrada correctamente',
+          'worker' => trim($user['first_name'] . ' ' . $user['last_name']),
+          'document_label' => $docType === 'dni' ? 'DNI' : 'Cédula',
+          'document_number' => $user['document_number'],
+        ];
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
