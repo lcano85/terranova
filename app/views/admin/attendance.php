@@ -3,6 +3,8 @@ require __DIR__ . '/../layouts/header.php';
 Auth::requireRole('admin');
 require_once __DIR__ . '/../../core/Csrf.php';
 require_once __DIR__ . '/../../core/Pagination.php';
+require_once __DIR__ . '/../../core/AttendanceLocation.php';
+$locationReference = require __DIR__ . '/../../config/attendance_location.php';
 
 $attendancePagination = Pagination::paginateArray($rows, 'attendance_page', 'attendance_per_page');
 $rows = $attendancePagination['rows'];
@@ -43,6 +45,11 @@ $attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
       <?= Pagination::render($attendancePaginationMeta) ?>
     </div>
 
+    <div class="alert alert-info small">
+      Referencia Terranova: <?= Helpers::e((string)$locationReference['latitude']) ?>, <?= Helpers::e((string)$locationReference['longitude']) ?>.
+      Coincide si la ubicación está dentro de <?= (int)$locationReference['radius_meters'] ?> metros del punto de referencia.
+      La distancia es aproximada y puede variar por la precisión del GPS.
+    </div>
     <div class="card shadow-sm">
       <div class="card-body table-responsive">
         <table class="table table-sm align-middle">
@@ -54,12 +61,13 @@ $attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
               <th>Tipo</th>
               <th>Fecha/Hora</th>
               <th>Tardanza</th>
-              <th>IP</th>
+              <th>IP</th><th>Ubicación</th>
               <th style="width: 260px;">Acciones</th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($rows as $r): ?>
+              <?php $location = AttendanceLocation::evaluate($r['latitude'] ?? null, $r['longitude'] ?? null, $locationReference); ?>
               <tr>
                 <td><?= (int)$r['id'] ?></td>
                 <td><?= Helpers::e($r['document_number']) ?></td>
@@ -72,6 +80,7 @@ $attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
                 <td><?= Helpers::e(Helpers::formatDateTime($r['marked_at'])) ?></td>
                 <td><?= (int)$r['minutes_late'] ?> min</td>
                 <td><?= Helpers::e($r['ip_address'] ?? '-') ?></td>
+                <td><?php require __DIR__ . '/attendance_location.php'; ?></td>
                 <td class="d-flex flex-wrap gap-2">
                   <button class="btn btn-sm btn-outline-secondary"
                           data-bs-toggle="modal"
@@ -134,11 +143,15 @@ $attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
                           </div>
                           <div class="col-md-6">
                             <label class="form-label">Latitud</label>
-                            <input type="number" step="0.000001" class="form-control" name="latitude" value="<?= Helpers::e($r['latitude'] ?? '') ?>">
+                            <input type="number" step="any" min="-90" max="90" class="form-control" name="latitude" value="<?= Helpers::e($r['latitude'] ?? '') ?>">
                           </div>
                           <div class="col-md-6">
                             <label class="form-label">Longitud</label>
-                            <input type="number" step="0.000001" class="form-control" name="longitude" value="<?= Helpers::e($r['longitude'] ?? '') ?>">
+                            <input type="number" step="any" min="-180" max="180" class="form-control" name="longitude" value="<?= Helpers::e($r['longitude'] ?? '') ?>">
+                          </div>
+                          <div class="col-12 border-top pt-2 mt-3">
+                            <div class="small text-muted mb-1">Ubicación guardada · radio de <?= (int)$locationReference['radius_meters'] ?> m. Si cambias las coordenadas, guarda para actualizar la comparación.</div>
+                            <?php require __DIR__ . '/attendance_location.php'; ?>
                           </div>
                         </div>
                       </div>
@@ -152,7 +165,7 @@ $attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
               </div>
             <?php endforeach; ?>
             <?php if (empty($rows)): ?>
-              <tr><td colspan="8" class="text-muted">Sin registros para los filtros</td></tr>
+              <tr><td colspan="9" class="text-muted">Sin registros para los filtros</td></tr>
             <?php endif; ?>
           </tbody>
         </table>
@@ -205,11 +218,11 @@ $attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
                 </div>
                 <div class="col-md-6">
                   <label class="form-label">Latitud</label>
-                  <input type="number" step="0.000001" class="form-control" name="latitude">
+                  <input type="number" step="any" min="-90" max="90" class="form-control" name="latitude">
                 </div>
                 <div class="col-md-6">
                   <label class="form-label">Longitud</label>
-                  <input type="number" step="0.000001" class="form-control" name="longitude">
+                  <input type="number" step="any" min="-180" max="180" class="form-control" name="longitude">
                 </div>
               </div>
             </div>
