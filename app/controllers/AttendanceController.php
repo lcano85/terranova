@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../core/Controller.php';
 require_once __DIR__ . '/../core/Helpers.php';
 require_once __DIR__ . '/../core/Csrf.php';
+require_once __DIR__ . '/../core/AttendanceLocation.php';
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../models/Shift.php';
 require_once __DIR__ . '/../models/Attendance.php';
@@ -41,6 +42,7 @@ class AttendanceController extends Controller
   public function mark(): void
   {
     $msg = null;
+    $locationReference = require __DIR__ . '/../config/attendance_location.php';
 
     if (Helpers::isPost()) {
       try {
@@ -57,6 +59,13 @@ class AttendanceController extends Controller
           throw new RuntimeException('Tipo de marcacion invalido');
         }
 
+        [$lat, $lng] = AttendanceLocation::requireAllowed(
+          $_POST['latitude'] ?? null,
+          $_POST['longitude'] ?? null,
+          $_POST['accuracy'] ?? null,
+          $locationReference
+        );
+
         $user = User::findByDoc($docType, $docNumber);
         if (!$user || ($user['role'] ?? '') !== 'worker') {
           throw new RuntimeException('Trabajador no encontrado');
@@ -66,8 +75,6 @@ class AttendanceController extends Controller
         $late = $this->calculateMinutesLate((int)$user['id'], $type, $markedAt);
         $ip = trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
         $ua = trim((string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
-        $lat = isset($_POST['latitude']) && $_POST['latitude'] !== '' ? (float)$_POST['latitude'] : null;
-        $lng = isset($_POST['longitude']) && $_POST['longitude'] !== '' ? (float)$_POST['longitude'] : null;
 
         Attendance::create(
           (int)$user['id'],
@@ -92,6 +99,6 @@ class AttendanceController extends Controller
       }
     }
 
-    $this->view('attendance/mark', compact('msg'));
+    $this->view('attendance/mark', compact('msg', 'locationReference'));
   }
 }

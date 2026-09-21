@@ -38,6 +38,11 @@ require_once __DIR__ . '/../../core/Csrf.php';
 
         <input type="hidden" name="latitude" id="latitude">
         <input type="hidden" name="longitude" id="longitude">
+        <input type="hidden" name="accuracy" id="accuracy">
+        <div class="alert alert-info small" id="locationStatus" role="status" aria-live="polite">
+          Para marcar entrada o salida, permite tu ubicación precisa y ubícate dentro de <?= (int)$locationReference['radius_meters'] ?> metros del punto de referencia de Terranova.
+        </div>
+        <noscript><div class="alert alert-danger">Activa JavaScript y el permiso de ubicación para marcar asistencia.</div></noscript>
 
         <button type="submit" class="btn btn-success w-100" id="btnMark" aria-live="polite">
           <span class="spinner-border spinner-border-sm me-2 d-none" id="markSpinner" aria-hidden="true"></span>
@@ -87,17 +92,60 @@ require_once __DIR__ . '/../../core/Csrf.php';
   (function() {
     const form = document.getElementById('attendanceForm');
     const button = document.getElementById('btnMark');
+    const status = document.getElementById('locationStatus');
+    const latitude = document.getElementById('latitude');
+    const longitude = document.getElementById('longitude');
+    const accuracy = document.getElementById('accuracy');
+    const radius = <?= (int)$locationReference['radius_meters'] ?>;
+    function reset(message) {
+      latitude.value = longitude.value = accuracy.value = '';
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      document.getElementById('markSpinner').classList.add('d-none');
+      document.getElementById('markButtonText').textContent = 'Reintentar marcación';
+      status.className = 'alert alert-danger small';
+      status.textContent = message;
+    }
     form.addEventListener('submit', function(event) {
-      if (button.disabled) {
-        event.preventDefault();
+      event.preventDefault();
+      if (button.disabled) return;
+      latitude.value = longitude.value = accuracy.value = '';
+      if (!window.isSecureContext || !navigator.geolocation) {
+        reset('No se puede obtener tu ubicación. Abre esta página mediante HTTPS en un navegador con ubicación habilitada.');
         return;
       }
       button.disabled = true;
       button.setAttribute('aria-busy', 'true');
       document.getElementById('markSpinner').classList.remove('d-none');
-      document.getElementById('markButtonText').textContent = 'Cargando…';
+      document.getElementById('markButtonText').textContent = 'Obteniendo ubicación…';
+      status.className = 'alert alert-info small';
+      status.textContent = 'Permite el acceso a tu ubicación. Estamos obteniendo una lectura nueva del GPS.';
+      navigator.geolocation.getCurrentPosition(function(position) {
+        const coords = position.coords;
+        if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)
+            || Math.abs(coords.latitude) > 90 || Math.abs(coords.longitude) > 180) {
+          reset('No se pudo obtener una ubicación válida. Activa el GPS y vuelve a intentar.');
+          return;
+        }
+        if (!Number.isFinite(coords.accuracy) || coords.accuracy <= 0 || coords.accuracy > radius) {
+          reset('La precisión del GPS no es suficiente (se requiere ' + radius + ' m o menos). Activa la ubicación precisa y vuelve a intentar cerca del local.');
+          return;
+        }
+        latitude.value = coords.latitude;
+        longitude.value = coords.longitude;
+        accuracy.value = coords.accuracy;
+        document.getElementById('markButtonText').textContent = 'Validando marcación…';
+        status.textContent = 'Ubicación obtenida. Comprobando la distancia a Terranova.';
+        HTMLFormElement.prototype.submit.call(form);
+      }, function(error) {
+        const messages = {
+          1: 'Debes permitir el acceso a tu ubicación. Habilita el permiso de ubicación precisa en tu navegador y vuelve a intentar.',
+          2: 'No se pudo determinar tu ubicación. Activa el GPS y vuelve a intentar.',
+          3: 'Se agotó el tiempo para obtener tu ubicación. Vuelve a intentar.'
+        };
+        reset(messages[error.code] || 'No se pudo obtener tu ubicación. Vuelve a intentar.');
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
     });
-
     document.addEventListener('DOMContentLoaded', function() {
       const modal = document.getElementById('modalMarkSuccess');
       if (modal) bootstrap.Modal.getOrCreateInstance(modal).show();
