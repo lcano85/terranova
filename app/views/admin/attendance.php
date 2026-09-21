@@ -131,7 +131,7 @@ $attendanceHistory = Attendance::historyForItems(array_column($rows, 'id'));
                           </div>
                           <div class="col-md-6">
                             <label class="form-label">Fecha y hora</label>
-                            <input type="datetime-local" class="form-control" name="marked_at" value="<?= Helpers::e(date('Y-m-d\TH:i', strtotime($r['marked_at']))) ?>" required>
+                            <input type="datetime-local" step="1" class="form-control" name="marked_at" value="<?= Helpers::e(date('Y-m-d\TH:i:s', strtotime($r['marked_at']))) ?>" required>
                           </div>
                           <div class="col-md-6">
                             <label class="form-label">IP</label>

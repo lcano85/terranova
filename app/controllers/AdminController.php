@@ -1415,7 +1415,8 @@ class AdminController extends Controller
         $userId = (int)($_POST['user_id'] ?? 0);
         $type = (string)($_POST['mark_type'] ?? '');
         $markedAtRaw = trim((string)($_POST['marked_at'] ?? ''));
-        $markedAt = DateTime::createFromFormat('!Y-m-d\TH:i', $markedAtRaw);
+        $markedAt = DateTime::createFromFormat('!Y-m-d\TH:i:s', $markedAtRaw)
+          ?: DateTime::createFromFormat('!Y-m-d\TH:i', $markedAtRaw);
         if (!$markedAt) {
           $markedAt = DateTime::createFromFormat('Y-m-d H:i:s', $markedAtRaw);
         }
@@ -1471,7 +1472,8 @@ class AdminController extends Controller
             $lat,
             $lng,
             $ua !== '' ? $ua : null,
-            (int)(Auth::user()['id'] ?? 0)
+            (int)(Auth::user()['id'] ?? 0),
+            array_keys($_POST)
           );
           $msg = ['type' => 'success', 'text' => 'Asistencia actualizada'];
         }

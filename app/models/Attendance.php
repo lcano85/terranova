@@ -209,7 +209,7 @@ class Attendance
   public static function update(
     int $id, int $userId, string $type, string $markedAt, int $late,
     ?string $ip, ?float $lat, ?float $lng, ?string $ua,
-    ?int $actorUserId = null
+    ?int $actorUserId = null, ?array $providedFields = null
   ): void {
     $pdo = Database::conn();
     $ownsTransaction = !$pdo->inTransaction();
@@ -219,8 +219,39 @@ class Attendance
       $lock->execute([$id]);
       if (!$lock->fetchColumn()) throw new RuntimeException('La asistencia no existe.');
       $before = self::find($id);
-      $pdo->prepare('UPDATE attendance SET user_id=?, mark_type=?, marked_at=?, minutes_late=?, latitude=?, longitude=?, ip_address=?, user_agent=? WHERE id=?')
-        ->execute([$userId, $type, $markedAt, $late, $lat, $lng, $ip, $ua, $id]);
+      $values = [
+        'user_id' => $userId, 'mark_type' => $type, 'marked_at' => $markedAt,
+        'minutes_late' => $late, 'latitude' => $lat, 'longitude' => $lng,
+        'ip_address' => $ip, 'user_agent' => $ua,
+      ];
+      // Preserve omitted optional fields and only write changed values.
+      foreach (['latitude', 'longitude', 'ip_address', 'user_agent'] as $field) {
+        if ($providedFields !== null && !in_array($field, $providedFields, true)) {
+          unset($values[$field]);
+        }
+      }
+      if ((int)$before['user_id'] === $userId && $before['mark_type'] === $type
+          && $before['marked_at'] === $markedAt) {
+        unset($values['minutes_late']);
+      }
+      $assignments = [];
+      $params = [];
+      foreach ($values as $field => $value) {
+        $original = $before[$field] ?? null;
+        $same = $original === $value;
+        if ($original !== null && $value !== null) {
+          $same = in_array($field, ['latitude', 'longitude'], true)
+            ? (float)$original === (float)$value
+            : (string)$original === (string)$value;
+        }
+        if ($same) continue;
+        $assignments[] = $field . '=?';
+        $params[] = $value;
+      }
+      if ($assignments) {
+        $params[] = $id;
+        $pdo->prepare('UPDATE attendance SET ' . implode(', ', $assignments) . ' WHERE id=?')->execute($params);
+      }
       $after = self::find($id);
       $changes = [];
       foreach (['user_id', 'mark_type', 'marked_at', 'minutes_late', 'latitude', 'longitude', 'ip_address', 'user_agent'] as $field) {
