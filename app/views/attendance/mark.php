@@ -42,6 +42,7 @@ require_once __DIR__ . '/../../core/Csrf.php';
         <div class="alert alert-info small" id="locationStatus" role="status" aria-live="polite">
           Para marcar entrada o salida, permite tu ubicación precisa y ubícate dentro de <?= (int)$locationReference['radius_meters'] ?> metros del punto de referencia de Terranova.
         </div>
+        <div class="small text-muted mb-3" id="locationDetails" role="status" aria-live="polite"></div>
         <noscript><div class="alert alert-danger">Activa JavaScript y el permiso de ubicación para marcar asistencia.</div></noscript>
 
         <button type="submit" class="btn btn-success w-100" id="btnMark" aria-live="polite">
@@ -96,7 +97,9 @@ require_once __DIR__ . '/../../core/Csrf.php';
     const latitude = document.getElementById('latitude');
     const longitude = document.getElementById('longitude');
     const accuracy = document.getElementById('accuracy');
-    const radius = <?= (int)$locationReference['radius_meters'] ?>;
+    const reference = <?= json_encode($locationReference, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+    const details = document.getElementById('locationDetails');
+    let cancelCapture = null;
     function reset(message) {
       latitude.value = longitude.value = accuracy.value = '';
       button.disabled = false;
@@ -106,10 +109,18 @@ require_once __DIR__ . '/../../core/Csrf.php';
       status.className = 'alert alert-danger small';
       status.textContent = message;
     }
+    function distanceToLocal(coords) {
+      const rad = value => value * Math.PI / 180;
+      const a = Math.sin(rad(coords.latitude - reference.latitude) / 2) ** 2
+        + Math.cos(rad(reference.latitude)) * Math.cos(rad(coords.latitude))
+        * Math.sin(rad(coords.longitude - reference.longitude) / 2) ** 2;
+      return 6371000 * 2 * Math.asin(Math.sqrt(Math.max(0, Math.min(1, a))));
+    }
     form.addEventListener('submit', function(event) {
       event.preventDefault();
       if (button.disabled) return;
       latitude.value = longitude.value = accuracy.value = '';
+      details.textContent = '';
       if (!window.isSecureContext || !navigator.geolocation) {
         reset('No se puede obtener tu ubicación. Abre esta página mediante HTTPS en un navegador con ubicación habilitada.');
         return;
@@ -119,32 +130,67 @@ require_once __DIR__ . '/../../core/Csrf.php';
       document.getElementById('markSpinner').classList.remove('d-none');
       document.getElementById('markButtonText').textContent = 'Obteniendo ubicación…';
       status.className = 'alert alert-info small';
-      status.textContent = 'Permite el acceso a tu ubicación. Estamos obteniendo una lectura nueva del GPS.';
-      navigator.geolocation.getCurrentPosition(function(position) {
-        const coords = position.coords;
-        if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)
-            || Math.abs(coords.latitude) > 90 || Math.abs(coords.longitude) > 180) {
-          reset('No se pudo obtener una ubicación válida. Activa el GPS y vuelve a intentar.');
-          return;
+      status.textContent = 'Permite tu ubicación precisa. Buscaremos una lectura adecuada durante hasta 20 segundos.';
+      let finished = false;
+      let watchId = null;
+      let best = null;
+      const stop = () => {
+        finished = true;
+        clearTimeout(timer);
+        if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        cancelCapture = null;
+      };
+      const fail = message => { stop(); reset(message); };
+      const timer = setTimeout(() => {
+        if (finished) return;
+        if (!best) {
+          fail('No se pudo obtener tu ubicación en 20 segundos. Activa el GPS y vuelve a intentar.');
+        } else if (best.accuracy > reference.max_accuracy_meters) {
+          fail('La precisión obtenida es de ' + best.accuracy.toFixed(1) + ' m. Se requiere '
+            + reference.max_accuracy_meters + ' m o menos. Activa la ubicación precisa y vuelve a intentar.');
+        } else {
+          fail('No se registró la asistencia: la ubicación obtenida está a ' + best.distance.toFixed(1)
+            + ' m del local. Debes estar dentro de ' + reference.radius_meters + ' m.');
         }
-        if (!Number.isFinite(coords.accuracy) || coords.accuracy <= 0 || coords.accuracy > radius) {
-          reset('La precisión del GPS no es suficiente (se requiere ' + radius + ' m o menos). Activa la ubicación precisa y vuelve a intentar cerca del local.');
-          return;
-        }
-        latitude.value = coords.latitude;
-        longitude.value = coords.longitude;
-        accuracy.value = coords.accuracy;
-        document.getElementById('markButtonText').textContent = 'Validando marcación…';
-        status.textContent = 'Ubicación obtenida. Comprobando la distancia a Terranova.';
-        HTMLFormElement.prototype.submit.call(form);
-      }, function(error) {
-        const messages = {
-          1: 'Debes permitir el acceso a tu ubicación. Habilita el permiso de ubicación precisa en tu navegador y vuelve a intentar.',
-          2: 'No se pudo determinar tu ubicación. Activa el GPS y vuelve a intentar.',
-          3: 'Se agotó el tiempo para obtener tu ubicación. Vuelve a intentar.'
-        };
-        reset(messages[error.code] || 'No se pudo obtener tu ubicación. Vuelve a intentar.');
-      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+      }, 20000);
+      cancelCapture = stop;
+      try {
+        watchId = navigator.geolocation.watchPosition(function(position) {
+          if (finished) return;
+          const coords = position.coords;
+          if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)
+              || Math.abs(coords.latitude) > 90 || Math.abs(coords.longitude) > 180
+              || !Number.isFinite(coords.accuracy) || coords.accuracy <= 0) return;
+          const reading = { latitude: coords.latitude, longitude: coords.longitude,
+            accuracy: coords.accuracy, distance: distanceToLocal(coords) };
+          if (!best || reading.accuracy <= best.accuracy) best = reading;
+          details.textContent = 'Mejor lectura: distancia al local ' + best.distance.toFixed(1)
+            + ' m · Precisión ' + best.accuracy.toFixed(1) + ' m.';
+          if (reading.accuracy > reference.max_accuracy_meters || reading.distance > reference.radius_meters) return;
+          stop();
+          latitude.value = reading.latitude;
+          longitude.value = reading.longitude;
+          accuracy.value = reading.accuracy;
+          details.textContent = 'Distancia al local: ' + reading.distance.toFixed(1)
+            + ' m · Precisión: ' + reading.accuracy.toFixed(1) + ' m.';
+          document.getElementById('markButtonText').textContent = 'Validando marcación…';
+          status.textContent = 'Ubicación obtenida. Validando la asistencia en el servidor.';
+          HTMLFormElement.prototype.submit.call(form);
+        }, function(error) {
+          if (finished) return;
+          if (error.code === 1) {
+            fail('Debes permitir tu ubicación. Habilita el permiso de ubicación precisa y vuelve a intentar.');
+          } else {
+            status.textContent = 'La ubicación aún no está disponible. Seguimos intentando obtener una lectura.';
+          }
+        }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+        if (finished) navigator.geolocation.clearWatch(watchId);
+      } catch (error) {
+        fail('No se pudo iniciar la ubicación. Revisa los permisos del navegador y vuelve a intentar.');
+      }
+    });
+    window.addEventListener('pagehide', () => {
+      if (cancelCapture) cancelCapture();
     });
     document.addEventListener('DOMContentLoaded', function() {
       const modal = document.getElementById('modalMarkSuccess');
