@@ -12,8 +12,8 @@ class AttendanceLocation
       throw new RuntimeException('Debes permitir el acceso a tu ubicación para marcar asistencia. Activa la ubicación y vuelve a intentar.');
     }
     if (!is_numeric($accuracy) || !is_finite((float)$accuracy) || (float)$accuracy <= 0
-        || (float)$accuracy > $reference['radius_meters']) {
-      throw new RuntimeException('No se pudo obtener una ubicación con precisión de ' . $reference['radius_meters'] . ' m. Activa la ubicación precisa y vuelve a intentar cerca del local.');
+        || (float)$accuracy > $reference['max_accuracy_meters']) {
+      throw new RuntimeException('No se pudo obtener una ubicación con precisión de ' . $reference['max_accuracy_meters'] . ' m. Activa la ubicación precisa y vuelve a intentar cerca del local.');
     }
     if ($location['distance'] > $reference['radius_meters']) {
       throw new RuntimeException('No se registró la asistencia: estás aproximadamente a '
