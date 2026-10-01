@@ -45,6 +45,7 @@ class MonthlyProductSale
   public static function replaceMonthFromRows(string $periodMonth, array $rows, string $sourceFile = ''): array
   {
     self::ensureSchema();
+    Product::assertUniqueImportRows($rows);
     $auditId = SalesImportAudit::start($periodMonth, $sourceFile, count($rows));
 
     $pdo = Database::conn();

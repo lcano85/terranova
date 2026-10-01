@@ -31,7 +31,7 @@ class Product
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         PRIMARY KEY (id),
-        UNIQUE KEY uq_products_normalized_name (normalized_name),
+        UNIQUE KEY uq_products_name_category (normalized_name, category_id),
         KEY idx_products_category (category_id),
         CONSTRAINT fk_products_category
           FOREIGN KEY (category_id) REFERENCES product_categories (id)
@@ -200,7 +200,7 @@ class Product
 
     $categoryId = ProductCategory::firstOrCreate($row['CATEGORIA'] ?? null);
     $normalized = self::normalize($name);
-    $existing = self::findByNormalizedName($normalized);
+    $existing = self::findByNameAndCategory($normalized, $categoryId);
 
     $payload = [
       'category_id' => $categoryId,
@@ -232,8 +232,8 @@ class Product
     }
 
     $normalized = self::normalize($name);
-    $existing = self::findByNormalizedName($normalized);
     $categoryId = ProductCategory::firstOrCreate($row['CATEGORIA'] ?? null);
+    $existing = self::findByNameAndCategory($normalized, $categoryId);
 
     $payload = [
       'category_id' => $categoryId ?: ($existing['category_id'] ?? null),
@@ -257,15 +257,41 @@ class Product
     return (int)Database::conn()->lastInsertId();
   }
 
-  public static function findByNormalizedName(string $normalizedName): ?array
+  public static function findByNameAndCategory(string $normalizedName, ?int $categoryId): ?array
   {
     self::ensureSchema();
-    $st = Database::conn()->prepare("SELECT * FROM products WHERE normalized_name=? LIMIT 1");
-    $st->execute([$normalizedName]);
+    $st = Database::conn()->prepare("SELECT * FROM products WHERE normalized_name=? AND category_id <=> ? LIMIT 1");
+    $st->execute([$normalizedName, $categoryId]);
     $row = $st->fetch();
     return $row ?: null;
   }
 
+  /** Validate the complete file before any catalog or sales writes. */
+  public static function assertUniqueImportRows(array $rows): void
+  {
+    // Match the database collation, including accent-insensitive comparisons.
+    $weight = Database::conn()->prepare("SELECT HEX(WEIGHT_STRING(CONVERT(? USING utf8mb4) COLLATE utf8mb4_unicode_ci))");
+    $seen = [];
+    foreach ($rows as $index => $row) {
+      $name = self::normalize((string)($row['PRODUCTO'] ?? ''));
+      if ($name === '') {
+        continue;
+      }
+      $category = ProductCategory::normalize((string)($row['CATEGORIA'] ?? ''));
+      $line = $index + 2;
+      if ($category === '') {
+        throw new RuntimeException("La categoria es obligatoria para el producto de la fila {$line}.");
+      }
+      $weight->execute([$name]);
+      $nameKey = $weight->fetchColumn();
+      $weight->execute([$category]);
+      $key = $nameKey . ':' . $weight->fetchColumn();
+      if (isset($seen[$key])) {
+        throw new RuntimeException("Producto repetido: {$name} / {$category}, filas {$seen[$key]} y {$line}. Revisa el archivo antes de importar.");
+      }
+      $seen[$key] = $line;
+    }
+  }
   public static function normalize(string $name): string
   {
     $name = preg_replace('/\s+/', ' ', trim($name)) ?? '';
