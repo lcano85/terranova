@@ -262,19 +262,28 @@ class AdminController extends Controller
   private function importInventoryCatalog(array $upload): int
   {
     $rows = $this->spreadsheetRowsToAssoc(XlsxReader::rows($upload['tmp_name']));
-    $count = 0;
-
-    foreach ($rows as $row) {
-      if (trim((string)($row['PRODUCTO'] ?? '')) === '') {
-        continue;
+    Product::assertUniqueImportRows($rows);
+    Product::ensureSchema();
+    $pdo = Database::conn();
+    $pdo->beginTransaction();
+    try {
+      $count = 0;
+      foreach ($rows as $row) {
+        if (trim((string)($row['PRODUCTO'] ?? '')) === '') {
+          continue;
+        }
+        Product::upsertFromInventoryRow($row);
+        $count++;
       }
-      Product::upsertFromInventoryRow($row);
-      $count++;
+      $pdo->commit();
+      return $count;
+    } catch (Throwable $e) {
+      if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+      }
+      throw $e;
     }
-
-    return $count;
   }
-
   private function importMonthlySales(array $upload, ?string $rawMonth): array
   {
     $rows = $this->spreadsheetRowsToAssoc(XlsxReader::rows($upload['tmp_name']));
