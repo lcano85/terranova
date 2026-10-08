@@ -285,7 +285,7 @@ function payrollTypeLabel(string $type): string {
             <a class="btn btn-outline-secondary" href="<?= Helpers::e(BASE_URL . '/admin/payroll?month=' . urlencode($nextMonth)) ?>">Mes siguiente</a>
             <a class="btn btn-outline-secondary" href="<?= Helpers::e(BASE_URL . '/admin/payroll') ?>">Mes actual</a>
           </div>
-          <div class="col-12 text-muted small">Consulta pagos anteriores sin seleccionar un trabajador ni calcular un nuevo pago.</div>
+          <div class="col-12 text-muted small">Consulta los pagos guardados del mes sin seleccionar un trabajador ni calcular un nuevo pago.</div>
         </form>
         <table class="table table-sm align-middle">
           <thead>
