@@ -16,6 +16,9 @@ $salaryAmount = (string)($_GET['salary_amount'] ?? ($preview['salary_amount'] ??
 $baseDays = (string)($_GET['base_days'] ?? ($preview['base_days'] ?? ''));
 $hoursPerDay = (string)($_GET['hours_per_day'] ?? ($preview['hours_per_day'] ?? ''));
 $isPublished = (int)($editingPayroll['is_published'] ?? 0);
+$historyMonth = new DateTimeImmutable($selectedMonth . '-01');
+$previousMonth = $historyMonth->modify('-1 month')->format('Y-m');
+$nextMonth = $historyMonth->modify('+1 month')->format('Y-m');
 
 $payrollPagination = Pagination::paginateArray($rows, 'payroll_page', 'payroll_per_page');
 $rows = $payrollPagination['rows'];
@@ -271,6 +274,19 @@ function payrollTypeLabel(string $type): string {
           <h5 class="mb-0">Pagos generados</h5>
           <span class="text-muted small"><?= Helpers::e(date('m/Y', strtotime($selectedMonth . '-01'))) ?></span>
         </div>
+        <form method="GET" action="<?= Helpers::e(BASE_URL . '/admin/payroll') ?>" class="row g-2 align-items-end mb-3">
+          <div class="col-lg-3 col-md-6">
+            <label for="historyMonth" class="form-label">Mes de pagos a consultar</label>
+            <input type="month" id="historyMonth" name="month" class="form-control" value="<?= Helpers::e($selectedMonth) ?>" required>
+          </div>
+          <div class="col-lg-9 d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">Ver pagos</button>
+            <a class="btn btn-outline-secondary" href="<?= Helpers::e(BASE_URL . '/admin/payroll?month=' . urlencode($previousMonth)) ?>">Mes anterior</a>
+            <a class="btn btn-outline-secondary" href="<?= Helpers::e(BASE_URL . '/admin/payroll?month=' . urlencode($nextMonth)) ?>">Mes siguiente</a>
+            <a class="btn btn-outline-secondary" href="<?= Helpers::e(BASE_URL . '/admin/payroll') ?>">Mes actual</a>
+          </div>
+          <div class="col-12 text-muted small">Consulta los pagos guardados del mes sin seleccionar un trabajador ni calcular un nuevo pago.</div>
+        </form>
         <table class="table table-sm align-middle">
           <thead>
             <tr>

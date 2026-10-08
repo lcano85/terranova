@@ -355,6 +355,7 @@ class Payroll
       $where = 'WHERE p.period_month = ?';
       $params[] = $month . '-01';
     }
+    $limit = $month ? '' : 'LIMIT 200';
 
     $st = Database::conn()->prepare("
       SELECT p.*, u.first_name, u.last_name, u.document_number
@@ -362,7 +363,7 @@ class Payroll
       JOIN users u ON u.id = p.user_id
       $where
       ORDER BY p.id DESC
-      LIMIT 200
+      $limit
     ");
     $st->execute($params);
     return $st->fetchAll();

@@ -1508,6 +1508,10 @@ class AdminController extends Controller
   public function payroll(): void
   {
     Auth::requireRole('admin');
+    if ((Auth::user()['role'] ?? '') !== 'admin') {
+      http_response_code(403);
+      exit('403 - Acceso exclusivo para administradores');
+    }
     Payroll::ensureSchema();
 
     $msg = null;
@@ -1538,8 +1542,10 @@ class AdminController extends Controller
     }
 
     $workers = User::activeWorkers();
-    $selectedMonth = trim((string)($_GET['month'] ?? date('Y-m')));
-    if (!DateTime::createFromFormat('Y-m', $selectedMonth)) {
+    $monthInput = $_GET['month'] ?? date('Y-m');
+    $selectedMonth = is_string($monthInput) ? trim($monthInput) : '';
+    if (!preg_match('/^[0-9]{4}-(0[1-9]|1[0-2])$/D', $selectedMonth)
+        || (int)substr($selectedMonth, 0, 4) < 1) {
       $selectedMonth = date('Y-m');
     }
 
