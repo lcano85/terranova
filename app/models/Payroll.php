@@ -50,12 +50,17 @@ class Payroll
         item_type VARCHAR(20) NOT NULL,
         concept VARCHAR(120) NOT NULL,
         amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+        created_at DATETIME NULL DEFAULT NULL,
         INDEX idx_payroll_items_payroll (payroll_id),
         CONSTRAINT fk_payroll_items_payroll
           FOREIGN KEY (payroll_id) REFERENCES payrolls(id)
           ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     ");
+
+    if (!$pdo->query("SHOW COLUMNS FROM payroll_items LIKE 'created_at'")->fetch()) {
+      $pdo->exec('ALTER TABLE payroll_items ADD COLUMN created_at DATETIME NULL DEFAULT NULL');
+    }
 
     $publishedColumn = $pdo->query("SHOW COLUMNS FROM payrolls LIKE 'is_published'")->fetch();
     if (!$publishedColumn) {
@@ -255,9 +260,9 @@ class Payroll
       ]);
 
       $payrollId = (int)$pdo->lastInsertId();
-      $itemSt = $pdo->prepare("INSERT INTO payroll_items (payroll_id, item_type, concept, amount) VALUES (?,?,?,?)");
+      $itemSt = $pdo->prepare("INSERT INTO payroll_items (payroll_id, item_type, concept, amount, created_at) VALUES (?,?,?,?,?)");
       foreach ($preview['items'] as $item) {
-        $itemSt->execute([$payrollId, $item['item_type'], $item['concept'], $item['amount']]);
+        $itemSt->execute([$payrollId, $item['item_type'], $item['concept'], $item['amount'], date('Y-m-d H:i:s')]);
       }
 
       $pdo->commit();
@@ -333,12 +338,23 @@ class Payroll
         $id,
       ]);
 
-      $pdo->prepare("DELETE FROM payroll_items WHERE payroll_id = ?")->execute([$id]);
-      $itemSt = $pdo->prepare("INSERT INTO payroll_items (payroll_id, item_type, concept, amount) VALUES (?,?,?,?)");
+      $existingSt = $pdo->prepare('SELECT id FROM payroll_items WHERE payroll_id=? FOR UPDATE');
+      $existingSt->execute([$id]);
+      $remaining = array_fill_keys(array_map('intval', $existingSt->fetchAll(PDO::FETCH_COLUMN)), true);
+      $updateItem = $pdo->prepare('UPDATE payroll_items SET item_type=?, concept=?, amount=? WHERE id=? AND payroll_id=?');
+      $insertItem = $pdo->prepare('INSERT INTO payroll_items (payroll_id,item_type,concept,amount,created_at) VALUES (?,?,?,?,?)');
       foreach ($preview['items'] as $item) {
-        $itemSt->execute([$id, $item['item_type'], $item['concept'], $item['amount']]);
+        $itemId = (int)($item['id'] ?? 0);
+        if ($itemId > 0) {
+          if (!isset($remaining[$itemId])) throw new RuntimeException('El adicional o descuento no pertenece a este pago o está duplicado.');
+          $updateItem->execute([$item['item_type'], $item['concept'], $item['amount'], $itemId, $id]);
+          unset($remaining[$itemId]);
+        } else {
+          $insertItem->execute([$id, $item['item_type'], $item['concept'], $item['amount'], date('Y-m-d H:i:s')]);
+        }
       }
-
+      $deleteItem = $pdo->prepare('DELETE FROM payroll_items WHERE id=? AND payroll_id=?');
+      foreach ($remaining as $itemId => $_) $deleteItem->execute([$itemId, $id]);
       $pdo->commit();
     } catch (Throwable $e) {
       $pdo->rollBack();
@@ -420,6 +436,7 @@ class Payroll
       }
       $type = ($types[$index] ?? '') === 'addition' ? 'addition' : 'deduction';
       $items[] = [
+        'id' => max(0, (int)($rawItems['id'][$index] ?? 0)),
         'item_type' => $type,
         'concept' => $concept,
         'amount' => $amount,

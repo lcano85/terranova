@@ -186,7 +186,7 @@ function payrollTypeLabel(string $type): string {
                         <th style="width:160px;">Tipo</th>
                         <th>Concepto</th>
                         <th style="width:160px;">Monto</th>
-                        <th style="width:80px;"></th>
+                        <th style="min-width:155px;">Fecha y hora de registro</th><th style="width:80px;"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -204,9 +204,9 @@ function payrollTypeLabel(string $type): string {
                               <option value="deduction" <?= $item['item_type'] === 'deduction' ? 'selected' : '' ?>>Descuento</option>
                             </select>
                           </td>
-                          <td><input class="form-control form-control-sm" name="items[concept][]" value="<?= Helpers::e((string)$item['concept']) ?>" placeholder="Horas extras, propinas, adelanto, prestamo"></td>
+                          <td><input type="hidden" name="items[id][]" value="<?= (int)($item['id'] ?? 0) ?>"><input class="form-control form-control-sm" name="items[concept][]" value="<?= Helpers::e((string)$item['concept']) ?>" placeholder="Horas extras, propinas, adelanto, prestamo"></td>
                           <td><input type="number" step="0.01" min="0" class="form-control form-control-sm js-calc item-amount" name="items[amount][]" value="<?= Helpers::e((string)$item['amount']) ?>"></td>
-                          <td><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row>Quitar</button></td>
+                          <td class="small text-muted text-nowrap" data-item-created><?= !empty($item['created_at']) ? Helpers::e(date('d/m/Y H:i:s', strtotime($item['created_at']))) : (!empty($item['id']) ? 'Sin fecha registrada' : 'Se registra al guardar') ?></td><td><button type="button" class="btn btn-sm btn-outline-danger" data-remove-row>Quitar</button></td>
                         </tr>
                       <?php endforeach; ?>
                     </tbody>
@@ -408,6 +408,7 @@ function payrollTypeLabel(string $type): string {
     const row = first.cloneNode(true);
     row.querySelectorAll('input').forEach((input) => input.value = input.type === 'number' ? '0' : '');
     row.querySelectorAll('select').forEach((select) => select.value = 'addition');
+    row.querySelector('[data-item-created]').textContent = 'Se registra al guardar';
     table.querySelector('tbody').appendChild(row);
     calculate();
   });
@@ -418,6 +419,7 @@ function payrollTypeLabel(string $type): string {
     const rows = table.querySelectorAll('tbody tr');
     if (rows.length === 1) {
       rows[0].querySelectorAll('input').forEach((input) => input.value = input.type === 'number' ? '0' : '');
+      rows[0].querySelector('[data-item-created]').textContent = 'Se registra al guardar';
     } else {
       button.closest('tr').remove();
     }

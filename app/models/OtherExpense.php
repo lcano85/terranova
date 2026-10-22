@@ -39,6 +39,18 @@ class OtherExpense
           ON DELETE RESTRICT ON UPDATE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
+    $pdo->exec(<<<'SQL'
+CREATE TABLE IF NOT EXISTS other_expense_receipts (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  expense_detail_id INT NOT NULL,
+  period_month DATE NOT NULL,
+  file_name VARCHAR(80) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_other_expense_receipt (expense_detail_id, period_month),
+  CONSTRAINT fk_other_expense_receipt_detail FOREIGN KEY (expense_detail_id) REFERENCES expense_details(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+SQL
+    );
     self::$schemaEnsured = true;
   }
 
@@ -84,10 +96,10 @@ class OtherExpense
       FROM expense_details ed
       LEFT JOIN monthly_other_expenses moe
         ON moe.expense_detail_id=ed.id AND moe.period_month=?
-      WHERE ed.is_active=1 OR moe.id IS NOT NULL
+      WHERE ed.is_active=1 OR moe.id IS NOT NULL OR EXISTS (SELECT 1 FROM other_expense_receipts oer WHERE oer.expense_detail_id=ed.id AND oer.period_month=?)
       ORDER BY ed.name ASC
     ");
-    $st->execute([$periodMonth]);
+    $st->execute([$periodMonth, $periodMonth]);
     return $st->fetchAll();
   }
 

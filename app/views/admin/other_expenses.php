@@ -60,11 +60,11 @@ $monthNames = [
         <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead class="table-light">
-              <tr><th>Detalle del gasto</th><th style="width: 260px;">Monto</th></tr>
+              <tr><th>Detalle del gasto</th><th style="width: 260px;">Monto</th><?php if ((Auth::user()["role"] ?? "") === "admin"): ?><th style="min-width: 310px;">Recibo</th><?php endif; ?></tr>
             </thead>
             <tbody>
               <?php if (empty($monthEntries)): ?>
-                <tr><td colspan="2" class="text-muted text-center py-4">Primero crea un detalle de gasto en la tabla maestra.</td></tr>
+                <tr><td colspan="<?= (Auth::user()["role"] ?? "") === "admin" ? 3 : 2 ?>" class="text-muted text-center py-4">Primero crea un detalle de gasto en la tabla maestra.</td></tr>
               <?php endif; ?>
               <?php foreach ($monthEntries as $entry): ?>
                 <tr>
@@ -81,11 +81,27 @@ $monthNames = [
                         placeholder="0.00" data-monthly-expense-amount>
                     </div>
                   </td>
+                  <?php if ((Auth::user()['role'] ?? '') === 'admin'): ?>
+                  <td>
+                    <?php $receipt = $expenseReceipts[(int)$entry['expense_detail_id']] ?? null; $receiptFormId = 'expenseReceipt' . (int)$entry['expense_detail_id']; ?>
+                    <?php if ($receipt): ?>
+                      <div class="d-flex gap-2 mb-2 align-items-center">
+                        <a class="btn btn-sm btn-outline-primary" href="/admin/finance/other-expenses/receipt/file?id=<?= (int)$receipt['id'] ?>" target="_blank" rel="noopener">Ver <?= strtoupper(pathinfo($receipt['file_name'], PATHINFO_EXTENSION)) ?></a>
+                        <button class="btn btn-sm btn-outline-danger" type="submit" form="<?= $receiptFormId ?>" name="action" value="delete" formnovalidate onclick="return confirm('¿Eliminar el recibo de este servicio y periodo?');">Eliminar recibo</button>
+                      </div>
+                    <?php endif; ?>
+                    <div class="d-flex gap-2">
+                      <input type="file" class="form-control form-control-sm" form="<?= $receiptFormId ?>" name="receipt_file" accept=".png,.pdf,image/png,application/pdf" aria-label="Recibo de <?= Helpers::e($entry['name']) ?>">
+                      <button class="btn btn-sm btn-outline-success" type="submit" form="<?= $receiptFormId ?>" name="action" value="upload"><?= $receipt ? 'Reemplazar' : 'Adjuntar' ?></button>
+                    </div>
+                    <div class="form-text">PNG o PDF, máximo 5 MB. Se guarda por servicio y periodo.</div>
+                  </td>
+                  <?php endif; ?>
                 </tr>
               <?php endforeach; ?>
             </tbody>
             <tfoot class="table-light">
-              <tr><th class="text-end">Total del mes</th><th class="text-end fs-5" id="monthlyExpensesTotal">S/ <?= number_format($monthTotal, 2) ?></th></tr>
+              <tr><th class="text-end">Total del mes</th><th class="text-end fs-5" id="monthlyExpensesTotal">S/ <?= number_format($monthTotal, 2) ?></th><?php if ((Auth::user()["role"] ?? "") === "admin"): ?><th></th><?php endif; ?></tr>
             </tfoot>
           </table>
         </div>
@@ -93,6 +109,15 @@ $monthNames = [
           <div class="card-body text-end"><button class="btn btn-success" type="submit">Guardar gastos del mes</button></div>
         <?php endif; ?>
       </form>
+      <?php if ((Auth::user()['role'] ?? '') === 'admin'): ?>
+        <?php foreach ($monthEntries as $entry): ?>
+          <form id="expenseReceipt<?= (int)$entry['expense_detail_id'] ?>" method="POST" action="/admin/finance/other-expenses/receipt" enctype="multipart/form-data">
+            <input type="hidden" name="_csrf" value="<?= Helpers::e(Csrf::token()) ?>">
+            <input type="hidden" name="expense_detail_id" value="<?= (int)$entry['expense_detail_id'] ?>">
+            <input type="hidden" name="period" value="<?= Helpers::e(substr($periodMonth, 0, 7)) ?>">
+          </form>
+        <?php endforeach; ?>
+      <?php endif; ?>
     </div>
 
     <div class="card shadow-sm">

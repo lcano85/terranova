@@ -1127,7 +1127,8 @@ class AdminController extends Controller
   {
     Auth::requireRole('admin');
     OtherExpense::ensureSchema();
-    $msg = null;
+    $msg = $_SESSION['other_expense_receipt_message'] ?? null;
+    unset($_SESSION['other_expense_receipt_message']);
     $selectedYear = max(2000, min(2100, (int)($_GET['year'] ?? date('Y'))));
     $selectedMonth = max(1, min(12, (int)($_GET['month'] ?? date('n'))));
 
@@ -1174,6 +1175,9 @@ class AdminController extends Controller
     $periodMonth = sprintf('%04d-%02d-01', $selectedYear, $selectedMonth);
     $details = OtherExpense::details();
     $monthEntries = OtherExpense::entriesForMonth($periodMonth);
+    $receiptStatement = Database::conn()->prepare('SELECT * FROM other_expense_receipts WHERE period_month=?');
+    $receiptStatement->execute([$periodMonth]);
+    $expenseReceipts = array_column($receiptStatement->fetchAll(), null, 'expense_detail_id');
     $monthTotal = round(array_sum(array_map(
       static fn(array $entry): float => (float)$entry['amount'],
       $monthEntries
@@ -1181,7 +1185,7 @@ class AdminController extends Controller
 
     $this->view('admin/other_expenses', compact(
       'msg', 'selectedYear', 'selectedMonth', 'periodMonth',
-      'details', 'monthEntries', 'monthTotal'
+      'details', 'monthEntries', 'monthTotal', 'expenseReceipts'
     ));
   }
 
@@ -1523,12 +1527,14 @@ class AdminController extends Controller
       try {
         if ($action === 'create') {
           $id = Payroll::create($_POST, (int)(Auth::user()['id'] ?? 0));
+          $savedPayrollId = $id;
           $msg = ['type' => 'success', 'text' => 'Pago generado #' . $id];
         }
 
         if ($action === 'update') {
           $id = (int)($_POST['id'] ?? 0);
           Payroll::update($id, $_POST);
+          $savedPayrollId = $id;
           $msg = ['type' => 'success', 'text' => 'Pago actualizado #' . $id];
         }
 
@@ -1551,7 +1557,7 @@ class AdminController extends Controller
 
     $preview = null;
     $editingPayroll = null;
-    $editId = (int)($_GET['edit_id'] ?? 0);
+    $editId = $savedPayrollId ?? (int)($_GET['edit_id'] ?? 0);
     if ($editId > 0) {
       try {
         $editingPayroll = Payroll::find($editId);
@@ -1576,8 +1582,10 @@ class AdminController extends Controller
             'type' => array_column($editingPayroll['items'], 'item_type'),
             'concept' => array_column($editingPayroll['items'], 'concept'),
             'amount' => array_column($editingPayroll['items'], 'amount'),
+            'id' => array_column($editingPayroll['items'], 'id'),
           ],
         ]);
+        $preview['items'] = $editingPayroll['items'];
       } catch (Throwable $e) {
         $msg = ['type' => 'danger', 'text' => 'Error: ' . $e->getMessage()];
       }
